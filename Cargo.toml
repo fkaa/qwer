@@ -1,0 +1,39 @@
+[package]
+name = "wip"
+version = "0.1.0"
+authors = ["Felix Kaaman <tmtu@tmtu.ee>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+futures = "*"
+futures-util = "*"
+async-channel = "*"
+async-trait = "*"
+
+env_logger = "*"
+thiserror = "*"
+stop-token = { git = "https://github.com/soruh/stop-token" }
+anyhow = "*"
+chrono = "*"
+hex-slice = "*"
+gcd = "*"
+bytes = "1.0"
+log = "*"
+byteorder = "*"
+
+rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }#"0.1"
+mpeg2ts-reader = { path = "/home/tmtu/Downloads/mpeg2ts-reader" } #"0.13"
+h264-reader = { path = "../h264-reader" } #git = "https://github.com/dholroyd/h264-reader" }
+fmp4 = { path = "../fmp4" }
+srt-tokio = { path = "../srt/srt-tokio" } # "0.1"
+srt-protocol = { path = "../srt/srt-protocol" } # "0.1"
+
+actix-web-actors = "4.0.0-beta.1"
+actix-web = "4.0.0-beta.1"
+actix-files = "0.6.0-beta.1"
+actix = "0.11.0-beta.1"
+actix-rt = "2.0.0-beta.1"
+
