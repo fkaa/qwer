@@ -1,0 +1,21 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="style.css" rel="stylesheet">
+</head>
+<body>
+    <h1>My stream!</h1>
+    <button type="button" onclick='stream.setTargetBuffer(0.1)'>100ms</button>
+    <button type="button" onclick='stream.setTargetBuffer(0.25)'>250ms</button>
+    <button type="button" onclick='stream.setTargetBuffer(0.5)'>500ms</button>
+    <button type="button" onclick='stream.setTargetBuffer(1.0)'>1000ms</button>
+    <div class="video-wrapper">
+        <video class="video" controls>
+            Not supported!
+        </video>
+    </div>
+
+    <script src="stats.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.video-wrapper {
+    width: 100%;
+    background-color:grey;
+    text-align:center;
+}
+
+.video {
+    background-color: #444;
+}
