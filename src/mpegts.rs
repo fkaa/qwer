@@ -214,9 +214,9 @@ use h264_reader::{
 };
 
 #[derive(Debug, Default)]
-struct ParameterSetContext {
-    sps: Option<(Vec<u8>, Result<SeqParameterSet, SpsError>)>,
-    pps: Option<(Vec<u8>, Result<PicParameterSet, PpsError>)>,
+pub struct ParameterSetContext {
+    pub sps: Option<(Vec<u8>, Result<SeqParameterSet, SpsError>)>,
+    pub pps: Option<(Vec<u8>, Result<PicParameterSet, PpsError>)>,
 }
 
 #[derive(Copy, Clone)]
@@ -290,8 +290,8 @@ fn frame_nal_unit(nal: &[u8], framing: H264BitstreamFraming) -> BytesMut {
 }
 
 struct NutScanner(bool, bool);
-struct SpsHandler;
-struct PpsHandler;
+pub struct SpsHandler;
+pub struct PpsHandler;
 
 struct IdrHandler;
 struct NonIdrHandler;
@@ -316,37 +316,6 @@ impl NalHandler for NonIdrHandler {
     }
 
     fn push(&mut self, _ctx: &mut Context<Self::Ctx>, _buf: &[u8]) {}
-
-    fn end(&mut self, _ctx: &mut Context<Self::Ctx>) {}
-}
-
-impl NalHandler for SpsHandler {
-    type Ctx = ParameterSetContext;
-
-    fn start(&mut self, _ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
-
-    fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
-        let sps = SeqParameterSet::from_bytes(&decode_nal(&buf[1..]));
-        if let Ok(sps) = &sps {
-            ctx.put_seq_param_set(sps.clone());
-        }
-        ctx.user_context.sps = Some((buf.to_vec(), sps));
-    }
-
-    fn end(&mut self, _ctx: &mut Context<Self::Ctx>) {}
-}
-
-impl NalHandler for PpsHandler {
-    type Ctx = ParameterSetContext;
-
-    fn start(&mut self, _ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
-
-    fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
-        ctx.user_context.pps = Some((
-            buf.to_vec(),
-            PicParameterSet::from_bytes(ctx, &decode_nal(&buf[1..])),
-        ));
-    }
 
     fn end(&mut self, _ctx: &mut Context<Self::Ctx>) {}
 }

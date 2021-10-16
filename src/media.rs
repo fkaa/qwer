@@ -16,7 +16,7 @@ pub struct Fraction {
 }
 
 impl Fraction {
-    pub fn new(numerator: u32, denominator: u32) -> Self {
+    pub const fn new(numerator: u32, denominator: u32) -> Self {
         Fraction {
             numerator,
             denominator,
@@ -69,6 +69,8 @@ impl fmt::Debug for VideoCodecInfo {
 
                 let sps = SeqParameterSet::from_bytes(&decode_nal(&sps[1..])).unwrap();
 
+                //dbg!(&sps);
+
                 let aspect_ratio = sps
                     .vui_parameters
                     .as_ref()
@@ -115,14 +117,30 @@ impl fmt::Debug for VideoCodecInfo {
     }
 }
 
+#[derive(Debug)]
+pub enum SoundType {
+    Mono,
+    Stereo,
+}
+
+#[derive(Debug)]
+pub struct AudioCodecInfo {
+    pub sample_rate: u32,
+    pub sample_bpp: u32,
+    pub sound_type: SoundType,
+    // pub extra: VideoCodecSpecificInfo,
+}
+
 pub enum CodecTypeInfo {
     Video(VideoCodecInfo),
+    Audio(AudioCodecInfo),
 }
 
 impl fmt::Debug for CodecTypeInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             CodecTypeInfo::Video(video) => write!(f, "{:?}", video),
+            CodecTypeInfo::Audio(audio) => write!(f, "{:?}", audio),
         }
     }
 }
@@ -153,6 +171,16 @@ pub struct Stream {
     pub id: u32,
     pub codec: Arc<CodecInfo>,
     pub timebase: Fraction,
+}
+
+impl Stream {
+    pub fn is_video(&self) -> bool {
+        matches!(self.codec.properties, CodecTypeInfo::Video(_))
+    }
+
+    pub fn is_audio(&self) -> bool {
+        matches!(self.codec.properties, CodecTypeInfo::Audio(_))
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -312,9 +340,40 @@ pub trait ByteWriteFilter<T: 'static> {
 }
 
 #[async_trait::async_trait]
+pub trait ByteWriteFilter2 {
+    async fn start(&mut self) -> anyhow::Result<()>;
+    async fn write(&mut self, bytes: bytes::Bytes) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
 pub trait ByteReadFilter {
     async fn start(&mut self) -> anyhow::Result<()>;
     async fn read(&mut self) -> anyhow::Result<Bytes>;
+}
+
+pub struct ByteStreamWriteFilter {
+    tx: Sender<anyhow::Result<bytes::Bytes>>,
+}
+
+impl ByteStreamWriteFilter {
+    pub fn new() -> (Self, Receiver<anyhow::Result<bytes::Bytes>>) {
+        let (tx, rx) = async_channel::unbounded();
+
+        (Self { tx }, rx)
+    }
+}
+
+#[async_trait::async_trait]
+impl ByteWriteFilter2 for ByteStreamWriteFilter {
+    async fn start(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn write(&mut self, data: bytes::Bytes) -> anyhow::Result<()> {
+        self.tx.send(Ok(data)).await?;
+
+        Ok(())
+    }
 }
 
 pub enum StreamMessage<T> {
@@ -362,6 +421,21 @@ impl FileWriteFilter {
 }
 
 #[async_trait::async_trait]
+impl ByteWriteFilter2 for FileWriteFilter {
+    async fn start(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn write(&mut self, bytes: bytes::Bytes) -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        self.file.write_all(&bytes).await?;
+        self.file.flush().await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
 impl<T: Send + Unpin + 'static> ByteWriteFilter<T> for FileWriteFilter {
     async fn start(&mut self, _stream: Stream) -> anyhow::Result<()> {
         Ok(())
@@ -379,6 +453,7 @@ impl<T: Send + Unpin + 'static> ByteWriteFilter<T> for FileWriteFilter {
 }
 
 pub struct WaitForSyncFrameFilter {
+    stream: Option<Stream>,
     target: Box<dyn FrameWriteFilter + Send + Unpin>,
     has_seen_sync_frame: bool,
 }
@@ -386,6 +461,7 @@ pub struct WaitForSyncFrameFilter {
 impl WaitForSyncFrameFilter {
     pub fn new(target: Box<dyn FrameWriteFilter + Send + Unpin>) -> Self {
         Self {
+            stream: None,
             target,
             has_seen_sync_frame: false,
         }
@@ -395,12 +471,17 @@ impl WaitForSyncFrameFilter {
 #[async_trait::async_trait]
 impl FrameWriteFilter for WaitForSyncFrameFilter {
     async fn start(&mut self, stream: Stream) -> anyhow::Result<()> {
-        Ok(self.target.start(stream).await?)
+        self.stream = Some(stream);
+        Ok(())
     }
 
     async fn write(&mut self, frame: Frame) -> anyhow::Result<()> {
         if let FrameDependency::None = frame.dependency {
-            self.has_seen_sync_frame = true;
+            if !self.has_seen_sync_frame && frame.stream.is_video() {
+                debug!("Found keyframe!");
+                self.target.start(self.stream.take().unwrap()).await?;
+                self.has_seen_sync_frame = true;
+            }
         }
 
         if self.has_seen_sync_frame {
@@ -430,6 +511,13 @@ impl MediaFrameQueue {
 
     pub fn push(&self, frame: Frame) {
         let mut targets = self.targets.lock().unwrap();
+
+        let lens = targets
+            .iter()
+            .map(|send| send.len().to_string())
+            .collect::<Vec<_>>();
+
+        debug!("Queue buffers: {}", lens.join(","));
 
         let targets_to_remove = targets
             .iter()

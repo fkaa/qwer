@@ -1,17 +1,12 @@
 use fmp4::*;
 
 use crate::media::{
-    ByteWriteFilter, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameWriteFilter,
+    ByteWriteFilter2, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameWriteFilter,
     MediaDuration, MediaTime, Stream, VideoCodecSpecificInfo,
 };
 use std::time::Instant;
 
 use log::warn;
-
-pub enum Mp4Metadata {
-    Init,
-    Segment(Mp4Segment),
-}
 
 pub struct Mp4Segment {
     start: MediaDuration,
@@ -20,7 +15,7 @@ pub struct Mp4Segment {
 }
 
 pub struct FragmentedMp4WriteFilter {
-    target: Box<dyn ByteWriteFilter<Mp4Metadata> + Send + Unpin>,
+    target: Box<dyn ByteWriteFilter2 + Send + Unpin>,
     start_time: Option<MediaTime>,
     prev_time: Option<MediaTime>,
     time_scale: Option<Fraction>,
@@ -28,7 +23,7 @@ pub struct FragmentedMp4WriteFilter {
 }
 
 impl FragmentedMp4WriteFilter {
-    pub fn new(target: Box<dyn ByteWriteFilter<Mp4Metadata> + Send + Unpin>) -> Self {
+    pub fn new(target: Box<dyn ByteWriteFilter2 + Send + Unpin>) -> Self {
         FragmentedMp4WriteFilter {
             target,
             start_time: None,
@@ -51,7 +46,7 @@ impl FragmentedMp4WriteFilter {
             mvhd: MovieHeaderBox {
                 creation_time: 0,
                 modification_time: 0,
-                timescale: 500, //stream.timebase.denominator,
+                timescale: stream.timebase.denominator,
                 duration: 0,
             },
             mvex: Some(MovieExtendsBox {
@@ -74,10 +69,7 @@ impl FragmentedMp4WriteFilter {
         ftyp.write(&mut bytes)?;
         moov.write(&mut bytes)?;
 
-        self.target
-            .write(Ok((bytes.freeze(), Mp4Metadata::Init)))
-            .await
-            .unwrap();
+        self.target.write(bytes.freeze()).await.unwrap();
 
         Ok(())
     }
@@ -90,7 +82,7 @@ impl FragmentedMp4WriteFilter {
         //dbg!(&duration.duration);
 
         let duration = if media_duration.duration == 0 {
-            33
+            1800
         } else {
             media_duration.duration
         };
@@ -142,16 +134,13 @@ impl FragmentedMp4WriteFilter {
         moof.write(&mut bytes)?;
         mdat.write(&mut bytes)?;
 
-        let segment = Mp4Segment {
+        let _segment = Mp4Segment {
             start: base_offset,
             duration: media_duration,
             is_keyframe: frame.dependency == FrameDependency::None,
         };
 
-        self.target
-            .write(Ok((bytes.freeze(), Mp4Metadata::Segment(segment))))
-            .await
-            .unwrap();
+        self.target.write(bytes.freeze()).await.unwrap();
         let _now = Instant::now();
         //println!("frame delivery took: {:?}", now - frame.received);
 
@@ -164,7 +153,7 @@ impl FragmentedMp4WriteFilter {
 #[async_trait::async_trait]
 impl FrameWriteFilter for FragmentedMp4WriteFilter {
     async fn start(&mut self, stream: Stream) -> anyhow::Result<()> {
-        self.target.start(stream.clone()).await?;
+        self.target.start().await?;
 
         self.write_preamble(&stream).await?;
 
@@ -175,14 +164,6 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
         if !frame.stream.is_video() {
             return Ok(());
         }
-
-        /*let mut i = 0;
-        while i < frame.buffer.len() {
-            let len =
-
-            i += len;
-        }
-        crate::rtmp::find_parameter_sets(&frame.buffer);*/
 
         if self.start_time.is_none() {
             self.start_time = Some(frame.time.clone());
