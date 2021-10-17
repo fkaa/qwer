@@ -12,7 +12,7 @@ use futures::{
     SinkExt,
 };
 use h264_reader::{
-    annexb::{AnnexBReader, NalReader},
+    annexb::{AnnexBReader},
     nal::{
         pps::{PicParameterSet, PpsError},
         sps::{SeqParameterSet, SpsError},
@@ -21,7 +21,9 @@ use h264_reader::{
     rbsp::decode_nal,
     Context,
 };
-use log::*;
+use crate::logger::*;
+use slog::{debug, warn};
+
 use rml_rtmp::{
     chunk_io::Packet,
     sessions::{ServerSession, ServerSessionEvent, ServerSessionResult, StreamMetadata},
@@ -40,6 +42,8 @@ pub struct ParameterSetContext {
 }
 
 pub struct RtmpReadFilter {
+    logger: ContextLogger,
+
     read_filter: TcpReadFilter,
     stop_source: StopSource,
 
@@ -58,11 +62,14 @@ pub struct RtmpReadFilter {
 }
 
 async fn rtmp_write_task(
+    logger: &ContextLogger,
     mut write_filter: TcpWriteFilter,
     mut rtmp_rx: Receiver<Packet>,
 ) -> anyhow::Result<()> {
     use crate::media::ByteWriteFilter2;
     use futures::stream::StreamExt;
+
+    debug!(logger, "Starting RTMP write task");
 
     loop {
         while let Some(pkt) = rtmp_rx.next().await {
@@ -75,6 +82,7 @@ async fn rtmp_write_task(
 
 impl RtmpReadFilter {
     pub fn new(
+        logger: ContextLogger,
         read_filter: TcpReadFilter,
         write_filter: TcpWriteFilter,
         rtmp_server_session: ServerSession,
@@ -82,16 +90,20 @@ impl RtmpReadFilter {
         let (rtmp_tx, rtmp_rx) = channel(50);
         let stop_source = StopSource::new();
 
+        let write_task_logger = logger.scope();
         tokio::spawn(stop_source.stop_token().stop_future(async move {
-            match rtmp_write_task(write_filter, rtmp_rx).await {
-                Ok(()) => {}
+            match rtmp_write_task(&write_task_logger, write_filter, rtmp_rx).await {
+                Ok(()) => {
+                    debug!(write_task_logger, "RTMP write task finished without errors");
+                }
                 Err(e) => {
-                    warn!("RTMP write task finished with error: {}", e);
+                    warn!(write_task_logger, "RTMP write task finished with error: {}", e);
                 }
             }
         }));
 
         RtmpReadFilter {
+            logger,
             read_filter,
             stop_source,
 
@@ -222,6 +234,8 @@ impl RtmpReadFilter {
     }
 
     async fn wait_for_metadata(&mut self) -> anyhow::Result<StreamMetadata> {
+        debug!(self.logger, "Waiting for metadata");
+
         loop {
             let bytes = self.read_filter.read().await?;
             for res in self
@@ -232,7 +246,7 @@ impl RtmpReadFilter {
                 match res {
                     ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
                     ServerSessionResult::RaisedEvent(evt) => {
-                        dbg!(&evt);
+                        // dbg!(&evt);
 
                         match evt {
                             ServerSessionEvent::StreamMetadataChanged {
@@ -334,8 +348,12 @@ impl FrameReadFilter for RtmpReadFilter {
             self.fetch().await?;
         }
 
-        dbg!(&self.video_stream);
-        dbg!(&self.audio_stream);
+        if let Some(ref video) = self.video_stream {
+            debug!(self.logger, "Video: {:?}", video);
+        }
+        if let Some(ref audio) = self.audio_stream {
+            debug!(self.logger, "Audio: {:?}", audio);
+        }
 
         Ok(self.video_stream.clone().unwrap())
     }
@@ -374,10 +392,10 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
     let mut reader = Cursor::new(packet.avc_data);
     let record = AvcDecoderConfigurationRecord::read(&mut reader)?;
 
-    error!(
+    /*error!(
         "get_codec_from_mp4 SPS: {}",
         base64::encode(&record.sequence_parameter_set)
-    );
+    );*/
     let sps = SeqParameterSet::from_bytes(&decode_nal(&record.sequence_parameter_set[1..]))
         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
@@ -488,7 +506,7 @@ impl NalHandler for SpsHandler {
     fn start(&mut self, _ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
 
     fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
-        error!("handle SPS: {}", base64::encode(&buf[1..]));
+        // error!("handle SPS: {}", base64::encode(&buf[1..]));
         let sps = SeqParameterSet::from_bytes(&decode_nal(&buf[1..]));
         if let Ok(sps) = &sps {
             ctx.put_seq_param_set(sps.clone());
@@ -505,7 +523,7 @@ impl NalHandler for PpsHandler {
     fn start(&mut self, _ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
 
     fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
-        error!("handle PPS: {}", base64::encode(&buf[1..]));
+        // error!("handle PPS: {}", base64::encode(&buf[1..]));
         ctx.user_context.pps = Some((
             buf.to_vec(),
             PicParameterSet::from_bytes(ctx, &decode_nal(&buf[1..])),

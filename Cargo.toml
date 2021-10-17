@@ -11,7 +11,11 @@ futures-util = "*"
 async-channel = "*"
 async-trait = "*"
 
-env_logger = "*"
+bytesize = "1.1"
+e-ring = "0.3"
+slog = "2.7"
+slog-async = "*"
+slog-term = "*"
 thiserror = "*"
 stop-token = { git = "https://github.com/soruh/stop-token" }
 failure = "*"
@@ -27,14 +31,14 @@ base64 = "*"
 flvparse = "0.1"
 rml_rtmp = "*"
 rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }
-mpeg2ts-reader = "*"
+# mpeg2ts-reader = "*"
 h264-reader = { git = "https://github.com/dholroyd/h264-reader" }
 fmp4 = { path = "fmp4" }
 
-actix-web-actors = "4.0.0-beta.1"
-actix-web = "4.0.0-beta.1"
-actix-files = "0.6.0-beta.1"
-actix = "0.11.0-beta.1"
-actix-rt = "2.0.0-beta.1"
+actix-web-actors = "4.0.0-beta.7"
+actix-web = "4.0.0-beta.9"
+actix-files = "0.6.0-beta.7"
+actix = "0.12"
+actix-rt = "2.3"
 dotenv = "0.15.0"
 

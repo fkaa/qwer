@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::io;
-use std::io::Error;
 
 use async_channel::Receiver;
 use rml_rtmp::{
@@ -17,10 +16,13 @@ mod mp42;
 // mod srt;
 // mod mpegts;
 mod rtmp;
+mod logger;
+
+use logger::*;
+use slog::{error, warn, debug, info};
 
 use bytes::Bytes;
 use bytes::{BufMut, BytesMut};
-use log::*;
 use media::*;
 use mp4::{FragmentedMp4WriteFilter, Mp4Metadata, Mp4Segment};
 use rtmp::RtmpReadFilter;
@@ -112,7 +114,7 @@ impl Handler<WebSocketMessage> for WebSocketMediaStream {
     fn handle(&mut self, msg: WebSocketMessage, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             WebSocketMessage::Codec(profile, constraints, level) => {
-                println!("codec! {} {} {}", profile, constraints, level);
+                debug!(self.logger, "Sending codec message");
 
                 let mut framed = BytesMut::with_capacity(4);
                 framed.put_u8(0);
@@ -123,7 +125,7 @@ impl Handler<WebSocketMessage> for WebSocketMediaStream {
                 ctx.binary(framed);
             }
             WebSocketMessage::Init(bytes) => {
-                println!("init!");
+                debug!(self.logger, "Sending init message");
 
                 let mut framed = BytesMut::with_capacity(bytes.len() + 1);
                 framed.put_u8(1);
@@ -156,10 +158,12 @@ impl Handler<WebSocketMessage> for WebSocketMediaStream {
     }
 }*/
 
-fn spawn_graph(mut graph: FilterGraph, token: &StopToken) {
+fn spawn_graph(logger: ContextLogger, mut graph: FilterGraph, token: &StopToken) {
     let fut = async move {
+        debug!(logger, "Starting graph");
+
         if let Err(e) = graph.run().await {
-            error!("{:?}", e);
+            error!(logger, "{:?}", e);
         }
     };
 
@@ -185,11 +189,14 @@ fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<(u8, u8, u8)> {
 }
 
 fn spawn_websocket_feeder(
+    logger: ContextLogger,
     receiver: Receiver<anyhow::Result<StreamMessage<Mp4Metadata>>>,
     addr: Addr<WebSocketMediaStream>,
     token: &StopToken,
 ) {
     let fut = async move {
+        debug!(logger, "Starting websocket feeder");
+
         while let Ok(Ok(message)) = receiver.recv().await {
             match message {
                 StreamMessage::Start(stream) => {
@@ -214,6 +221,7 @@ fn spawn_websocket_feeder(
 }
 
 struct WebSocketMediaStream {
+    logger: ContextLogger,
     address: String,
     queue: Option<MediaFrameQueueReceiver>,
     stop_source: StopSource,
@@ -222,10 +230,11 @@ struct WebSocketMediaStream {
 }
 
 impl WebSocketMediaStream {
-    fn new(address: String, queue: MediaFrameQueueReceiver) -> Self {
+    fn new(logger: ContextLogger, address: String, queue: MediaFrameQueueReceiver) -> Self {
         let stop_source = StopSource::new();
 
         WebSocketMediaStream {
+            logger,
             address,
             queue: Some(queue),
             stop_source,
@@ -237,19 +246,24 @@ impl WebSocketMediaStream {
     fn start_stream(&mut self, addr: Addr<WebSocketMediaStream>) {
         let stop_token = self.stop_source.stop_token();
 
+        let graph_logger = self.logger.scope();
+
         // read
         let queue_reader = self.queue.take().unwrap();
 
         // write
         let (output_filter, receiver) = StreamWriteFilter::new();
-        let write_filter = WaitForSyncFrameFilter::new(Box::new(FragmentedMp4WriteFilter::new(
-            Box::new(output_filter),
-        )));
+        let fmp4_filter = Box::new(FragmentedMp4WriteFilter::new(Box::new(output_filter)));
+        let write_analyzer = Box::new(FrameAnalyzerFilter::write(graph_logger.clone(), fmp4_filter));
+        let write_filter = WaitForSyncFrameFilter::new(
+            graph_logger.clone(),
+            write_analyzer,
+        );
 
         let graph = FilterGraph::new(Box::new(queue_reader), Box::new(write_filter));
 
-        spawn_graph(graph, &stop_token);
-        spawn_websocket_feeder(receiver, addr, &stop_token);
+        spawn_graph(graph_logger, graph, &stop_token);
+        spawn_websocket_feeder(self.logger.scope(), receiver, addr, &stop_token);
 
         self.paused = false;
     }
@@ -298,10 +312,12 @@ async fn stream_video(
     let queue_receiver = data.stream_repo.send(FindStream(f.clone())).await;
 
     if let Ok(Some(queue_receiver)) = queue_receiver {
+        let graph_logger = data.logger.scope();
         // write
         let (output_filter, receiver) = ByteStreamWriteFilter::new();
-        let write_filter = WaitForSyncFrameFilter::new(Box::new(
-            mp42::FragmentedMp4WriteFilter::new(Box::new(output_filter)),
+        let write_filter = WaitForSyncFrameFilter::new(
+            graph_logger.clone(),
+            Box::new(mp42::FragmentedMp4WriteFilter::new(Box::new(output_filter)),
         ));
 
         //let file = tokio::fs::File::create("test.fmp4").await.unwrap();
@@ -310,6 +326,7 @@ async fn stream_video(
         let mut graph = FilterGraph::new(Box::new(queue_receiver), Box::new(write_filter));
 
         tokio::spawn(async move {
+            debug!(graph_logger, "Starting graph");
             graph.run().await.unwrap();
         });
 
@@ -326,23 +343,31 @@ async fn ws_stream_video(
     stream: web::Payload,
     data: web::Data<AppData>,
 ) -> HttpResponse {
+    let logger = data.logger.scope();
+
     let path: std::path::PathBuf = req.match_info().query("filename").parse().unwrap();
 
     let f = path.file_name().unwrap().to_str().unwrap().to_string();
 
     let queue_receiver = data.stream_repo.send(FindStream(f.clone())).await;
 
+    debug!(logger, "Received websocket request for {} from {:?}", f, req.peer_addr());
+
     if let Ok(Some(queue_receiver)) = queue_receiver {
-        let ws_stream = WebSocketMediaStream::new(f, queue_receiver);
+        debug!(data.logger, "Found a stream at {}", f);
+
+        let ws_stream = WebSocketMediaStream::new(logger.scope(), f, queue_receiver);
         let response = ws::start(ws_stream, &req, stream).unwrap();
 
         response
     } else {
+        debug!(logger, "Did not find a stream at {}", f);
+
         HttpResponse::NotFound().body("nope!")
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 struct HttpStreamingError(anyhow::Error);
 
 impl fmt::Display for HttpStreamingError {
@@ -366,11 +391,11 @@ async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) ->
 }
 
 async fn do_rtmp_handshake(
+    logger: &ContextLogger,
     read: &mut TcpReadFilter,
     write: &mut TcpWriteFilter,
 ) -> anyhow::Result<ServerSession> {
     use failure::Fail;
-    use media::ByteWriteFilter2;
 
     let mut handshake = Handshake::new(PeerType::Server);
 
@@ -421,7 +446,7 @@ async fn do_rtmp_handshake(
                     write.write(packet.bytes.into()).await?
                 }
                 ServerSessionResult::RaisedEvent(evt) => {
-                    dbg!(&evt);
+                    // dbg!(&evt);
 
                     match evt {
                         ServerSessionEvent::ConnectionRequested {
@@ -439,7 +464,7 @@ async fn do_rtmp_handshake(
                                 }
                             }*/
 
-                            debug!("Accepted connection request");
+                            debug!(logger, "Accepted connection request");
 
                             application_name = Some(app_name);
                         }
@@ -463,7 +488,7 @@ async fn do_rtmp_handshake(
 
                                 authenticated = true;
 
-                                debug!("Accepted publish stream request");
+                                debug!(logger, "Accepted publish stream request");
                             }
                         }
                         _ => {}
@@ -477,36 +502,40 @@ async fn do_rtmp_handshake(
             return Ok(session);
         }
 
-        debug!("reading from endpoint!");
+        // debug!("reading from endpoint!");
         let bytes = read.read().await?;
         let results = session.handle_input(&bytes).map_err(|e| e.kind.compat())?;
-        debug!(
+        /*debug!(
             "got {} results from endpoint, {} total",
             results.len(),
             r.len()
-        );
+        );*/
         r.extend(results);
     }
 }
 
 async fn handle_tcp_socket(
+    logger: &ContextLogger,
     socket: TcpStream,
     stream_repo: Addr<StreamRepository>,
 ) -> anyhow::Result<()> {
     let sid = String::from("test");
 
-    let queue = MediaFrameQueue::new();
 
     let (mut read_filter, mut write_filter) = create_tcp_filters(socket, 188 * 8);
 
-    let server_session = do_rtmp_handshake(&mut read_filter, &mut write_filter).await?;
+    let server_session = do_rtmp_handshake(&logger, &mut read_filter, &mut write_filter).await?;
 
-    let rtmp_filter = RtmpReadFilter::new(read_filter, write_filter, server_session);
+    let filter_logger = logger.scope();
+
+    let queue = MediaFrameQueue::new(filter_logger.clone());
+    let rtmp_filter = RtmpReadFilter::new(filter_logger.clone(), read_filter, write_filter, server_session);
+    let rtmp_analyzer = FrameAnalyzerFilter::read(filter_logger.clone(), Box::new(rtmp_filter));
 
     //let file = tokio::fs::File::create("test.fmp4").await.unwrap();
     //let mp4_writer = mp42::FragmentedMp4WriteFilter::new(Box::new(FileWriteFilter::new(file)));
     //let mut graph = FilterGraph::new(Box::new(rtmp_filter), Box::new(mp4_writer));
-    let mut graph = FilterGraph::new(Box::new(rtmp_filter), Box::new(queue.clone()));
+    let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
 
     stream_repo.send(RegisterStream(sid.clone(), queue)).await?;
 
@@ -519,24 +548,28 @@ async fn handle_tcp_socket(
     }
 }
 
-fn spawn_listen_for_tcp(stream_repo: Addr<StreamRepository>, rtmp_addr: String) {
+fn spawn_listen_for_tcp(logger: ContextLogger, stream_repo: Addr<StreamRepository>, rtmp_addr: String) {
     let fut = async move {
-        let listener = TcpListener::bind(rtmp_addr).await.unwrap();
-
         info!(
-            "Listening for RTMP connections at {:?}",
-            listener.local_addr()
+            logger,
+            "Listening for RTMP connections at {}",
+            rtmp_addr
         );
+
+        let listener = TcpListener::bind(rtmp_addr).await.unwrap();
 
         loop {
             let (socket, addr) = listener.accept().await.unwrap();
-            debug!("RTMP connection from {:?}", addr);
+            info!(logger, "RTMP connection from {:?}", addr);
 
             let stream_repo = stream_repo.clone();
+            let logger = logger.scope();
             tokio::spawn(async move {
-                match handle_tcp_socket(socket, stream_repo).await {
-                    Ok(_) => info!("Finished streaming from RTMP"),
-                    Err(e) => warn!("Error while streaming from RTMP: {:?}", e),
+                info!(logger, "Establishing RTMP connection from {:?}", socket.peer_addr());
+
+                match handle_tcp_socket(&logger, socket, stream_repo).await {
+                    Ok(_) => info!(logger, "Finished streaming from RTMP"),
+                    Err(e) => warn!(logger, "Error while streaming from RTMP: {:?}", e),
                 }
             });
         }
@@ -624,6 +657,7 @@ impl ByteReadFilter for TcpReadFilter {
 #[derive(Clone)]
 struct AppData {
     stream_repo: Addr<StreamRepository>,
+    logger: ContextLogger,
 }
 
 fn get_conn_info(connection: &dyn std::any::Any, _data: &mut actix_web::dev::Extensions) {
@@ -635,12 +669,14 @@ fn get_conn_info(connection: &dyn std::any::Any, _data: &mut actix_web::dev::Ext
 }
 
 #[actix_rt::main]
-async fn start(web_addr: &str, rtmp_addr: String) -> Result<(), Error> {
+async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyhow::Result<()> {
     let stream_repo = StreamRepository::default().start();
 
-    spawn_listen_for_tcp(stream_repo.clone(), rtmp_addr);
+    spawn_listen_for_tcp(logger.scope(), stream_repo.clone(), rtmp_addr);
 
-    let data = AppData { stream_repo };
+    let web_logger = logger.scope();
+    info!(web_logger, "Starting webserver at {}", web_addr);
+    let data = AppData { stream_repo, logger: web_logger, };
 
     HttpServer::new(move || {
         App::new()
@@ -656,47 +692,18 @@ async fn start(web_addr: &str, rtmp_addr: String) -> Result<(), Error> {
     .await?;
 
     Ok(())
-    /*loop {
-
-        if let Some((_instant, bytes)) = srt_socket.try_next().await? {
-        use tokio::io::AsyncWriteExt;
-            file.write_all(&bytes).await?;
-            //println!("Received {:?} packets", count);
-            demux.push(&mut ctx, &bytes);
-            count += 1;
-        }
-    }*/
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (_root, logger) = logger::initialize();
     let _ = dotenv::dotenv();
-    env_logger::init();
 
     let web_addr =
         std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:8080"));
     let rtmp_addr =
         std::env::var("RTMP_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:1935"));
 
-    start(&web_addr, rtmp_addr)?;
-
-    /*let mut rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-
-        let file = tokio::fs::File::create("test.fmp4").await.unwrap();
-
-        let srt_socket = SrtSocketBuilder::new_listen()
-            .local_port(3333)
-            .connect()
-            .await.unwrap();
-
-        let srt_reader = SrtReadFilter::new(srt_socket);
-        let file = tokio::fs::File::create("test.fmp4").await.unwrap();
-        let mp4_writer = FragmentedMp4WriteFilter::new(Box::new(FileWriteFilter::new(file)));
-
-        let mut graph = FilterGraph::new(Box::new(srt_reader), Box::new(mp4_writer));
-
-        graph.run().await.unwrap();
-    });*/
+    start(logger, &web_addr, rtmp_addr)?;
 
     Ok(())
 }
