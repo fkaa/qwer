@@ -361,8 +361,8 @@ impl actix_web::error::ResponseError for HttpStreamingError {
     }
 }
 
-async fn authenticate_rtmp_stream(_app_name: &str, _stream_key: &str) -> bool {
-    true
+async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
+    std::env::var("STREAM_KEY").map(|key| key == supplied_stream_key).unwrap_or(true)
 }
 
 async fn do_rtmp_handshake(
@@ -519,9 +519,9 @@ async fn handle_tcp_socket(
     }
 }
 
-fn spawn_listen_for_tcp(stream_repo: Addr<StreamRepository>) {
+fn spawn_listen_for_tcp(stream_repo: Addr<StreamRepository>, rtmp_addr: String) {
     let fut = async move {
-        let listener = TcpListener::bind("localhost:1935").await.unwrap();
+        let listener = TcpListener::bind(rtmp_addr).await.unwrap();
 
         info!(
             "Listening for RTMP connections at {:?}",
@@ -635,10 +635,10 @@ fn get_conn_info(connection: &dyn std::any::Any, _data: &mut actix_web::dev::Ext
 }
 
 #[actix_rt::main]
-async fn start() -> Result<(), Error> {
+async fn start(web_addr: &str, rtmp_addr: String) -> Result<(), Error> {
     let stream_repo = StreamRepository::default().start();
 
-    spawn_listen_for_tcp(stream_repo.clone());
+    spawn_listen_for_tcp(stream_repo.clone(), rtmp_addr);
 
     let data = AppData { stream_repo };
 
@@ -651,7 +651,7 @@ async fn start() -> Result<(), Error> {
             .default_service(web::route().to(not_found))
     })
     .on_connect(get_conn_info)
-    .bind("0.0.0.0:8080")?
+    .bind(web_addr)?
     .run()
     .await?;
 
@@ -669,9 +669,15 @@ async fn start() -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = dotenv::dotenv();
     env_logger::init();
 
-    start();
+    let web_addr =
+        std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:8080"));
+    let rtmp_addr =
+        std::env::var("RTMP_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:1935"));
+
+    start(&web_addr, rtmp_addr)?;
 
     /*let mut rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
