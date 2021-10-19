@@ -69,6 +69,7 @@ VideoStream = function(videoElement, streamUri) {
     this.inFlight = false;
     this.videoStarted = false;
     this.targetBuffer = 0.1;
+    this.hasInit = false;
 
     this.source.onsourceopen = this.onsourceopen;
 
@@ -242,7 +243,14 @@ VideoStream.prototype.onwsmessage = function(event) {
 
     this.networkBytes += bytes.length;
 
-    var type = bytes[0];
+    if (!this.hasInit) {
+        this.onwsinit(bytes);
+        this.hasInit = true;
+    } else {
+        this.onwsframe(bytes);
+    }
+
+    /*var type = bytes[0];
 
     // console.log("type: " + type);
 
@@ -250,14 +258,13 @@ VideoStream.prototype.onwsmessage = function(event) {
 
     switch (type) {
         case VideoStream.MSG_INIT:
-            this.onwsinit(rest);
 
             break;
 
         case VideoStream.MSG_FRAME:
             this.onwsframe(rest);
             break;
-    }
+    }*/
 }
 
 function tohex(num) {

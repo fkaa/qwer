@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
-use std::fmt;
 use std::io;
+use std::sync::{Arc, RwLock};
 
 use async_channel::Receiver;
 use rml_rtmp::{
@@ -9,6 +9,7 @@ use rml_rtmp::{
 };
 use stop_token::{StopSource, StopToken};
 use tokio::net::{tcp, TcpListener, TcpStream};
+use futures::{StreamExt, SinkExt, stream::SplitSink};
 
 mod media;
 mod mp4;
@@ -27,62 +28,38 @@ use media::*;
 use mp4::{FragmentedMp4WriteFilter, Mp4Metadata, Mp4Segment};
 use rtmp::RtmpReadFilter;
 
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, StreamHandler};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Extension,
+        Path,
+    },
+    http::StatusCode,
+    Router,
+    response::{IntoResponse, Html},
+    handler::get,
+    AddExtensionLayer,
+};
+
+/*use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, StreamHandler};
 use actix_web::{
     dev::Body, get, http::StatusCode, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use actix_web_actors::ws;
+use actix_web_actors::ws;*/
 
-struct FindStream(String);
-
-impl Message for FindStream {
-    type Result = Option<MediaFrameQueueReceiver>;
-}
-
-struct RegisterStream(String, MediaFrameQueue);
-
-impl Message for RegisterStream {
-    type Result = ();
-}
-
-struct RemoveStream(String);
-
-impl Message for RemoveStream {
-    type Result = ();
-}
 
 #[derive(Default)]
 struct StreamRepository {
     streams: HashMap<String, MediaFrameQueue>,
 }
 
-impl Actor for StreamRepository {
-    type Context = Context<Self>;
-}
-
-impl Handler<FindStream> for StreamRepository {
+/*impl Handler<FindStream> for StreamRepository {
     type Result = Option<MediaFrameQueueReceiver>;
 
     fn handle(&mut self, msg: FindStream, _ctx: &mut Self::Context) -> Self::Result {
         self.streams.get(&msg.0).map(|queue| queue.get_receiver())
     }
-}
-
-impl Handler<RegisterStream> for StreamRepository {
-    type Result = ();
-
-    fn handle(&mut self, msg: RegisterStream, _ctx: &mut Self::Context) -> Self::Result {
-        self.streams.insert(msg.0, msg.1);
-    }
-}
-
-impl Handler<RemoveStream> for StreamRepository {
-    type Result = ();
-
-    fn handle(&mut self, msg: RemoveStream, _ctx: &mut Self::Context) -> Self::Result {
-        self.streams.remove(&msg.0);
-    }
-}
+}*/
 
 enum WebSocketMessage {
     Codec(u8, u8, u8),
@@ -90,25 +67,9 @@ enum WebSocketMessage {
     Init(bytes::Bytes),
 }
 
-impl Message for WebSocketMessage {
-    type Result = ();
-}
-
 struct StartWebSocketMedia;
 
-impl Message for StartWebSocketMedia {
-    type Result = ();
-}
-
-impl Handler<StartWebSocketMedia> for WebSocketMediaStream {
-    type Result = ();
-
-    fn handle(&mut self, _msg: StartWebSocketMedia, _ctx: &mut Self::Context) -> Self::Result {
-        //self.start_stream(ctx.address());
-    }
-}
-
-impl Handler<WebSocketMessage> for WebSocketMediaStream {
+/*impl Handler<WebSocketMessage> for WebSocketMediaStream {
     type Result = ();
 
     fn handle(&mut self, msg: WebSocketMessage, ctx: &mut Self::Context) -> Self::Result {
@@ -142,7 +103,7 @@ impl Handler<WebSocketMessage> for WebSocketMediaStream {
             }
         }
     }
-}
+}*/
 
 /*impl StreamHandler<WebSocketMessage> for WebSocketMediaStream {
     fn handle(&mut self, msg: WebSocketMessage, ctx: &mut Self::Context) {
@@ -188,7 +149,7 @@ fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<(u8, u8, u8)> {
     }
 }
 
-fn spawn_websocket_feeder(
+/*fn spawn_websocket_feeder(
     logger: ContextLogger,
     receiver: Receiver<anyhow::Result<StreamMessage<Mp4Metadata>>>,
     addr: Addr<WebSocketMediaStream>,
@@ -287,19 +248,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketMediaStr
             }
         }
     }
-}
+}*/
 
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
 
-async fn not_found(req: HttpRequest) -> impl Responder {
-    println!("{:?}", req);
-    HttpResponse::NotFound().body("Goodbye world!")
-}
-
-#[get("/http/{filename}")]
+/*#[get("/http/{filename}")]
 async fn stream_video(
     req: HttpRequest,
     _stream: web::Payload,
@@ -335,9 +287,9 @@ async fn stream_video(
     } else {
         HttpResponse::NotFound().body("nope!")
     }
-}
+}*/
 
-#[get("/ws/{filename}")]
+/*#[get("/ws/{filename}")]
 async fn ws_stream_video(
     req: HttpRequest,
     stream: web::Payload,
@@ -365,9 +317,9 @@ async fn ws_stream_video(
 
         HttpResponse::NotFound().body("nope!")
     }
-}
+}*/
 
-#[derive(Debug, thiserror::Error)]
+/*#[derive(Debug, thiserror::Error)]
 struct HttpStreamingError(anyhow::Error);
 
 impl fmt::Display for HttpStreamingError {
@@ -384,7 +336,7 @@ impl actix_web::error::ResponseError for HttpStreamingError {
     fn error_response(&self) -> HttpResponse<Body> {
         HttpResponse::InternalServerError().body(Body::None)
     }
-}
+}*/
 
 async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
     std::env::var("STREAM_KEY").map(|key| key == supplied_stream_key).unwrap_or(true)
@@ -517,10 +469,9 @@ async fn do_rtmp_handshake(
 async fn handle_tcp_socket(
     logger: &ContextLogger,
     socket: TcpStream,
-    stream_repo: Addr<StreamRepository>,
+    stream_repo: Arc<RwLock<StreamRepository>>,
 ) -> anyhow::Result<()> {
     let sid = String::from("test");
-
 
     let (mut read_filter, mut write_filter) = create_tcp_filters(socket, 188 * 8);
 
@@ -537,18 +488,20 @@ async fn handle_tcp_socket(
     //let mut graph = FilterGraph::new(Box::new(rtmp_filter), Box::new(mp4_writer));
     let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
 
-    stream_repo.send(RegisterStream(sid.clone(), queue)).await?;
+    stream_repo.write().unwrap().streams.insert(sid.clone(), queue);
 
-    if let Err(e) = graph.run().await {
-        stream_repo.send(RemoveStream(sid)).await.unwrap();
-        Err(e)
-    } else {
-        stream_repo.send(RemoveStream(sid)).await.unwrap();
-        Ok(())
-    }
+    let result = graph.run().await;
+
+    stream_repo.write().unwrap().streams.remove(&sid);
+
+    result
 }
 
-fn spawn_listen_for_tcp(logger: ContextLogger, stream_repo: Addr<StreamRepository>, rtmp_addr: String) {
+fn spawn_listen_for_tcp(
+    logger: ContextLogger,
+    stream_repo: Arc<RwLock<StreamRepository>>,
+    rtmp_addr: String)
+{
     let fut = async move {
         info!(
             logger,
@@ -578,7 +531,10 @@ fn spawn_listen_for_tcp(logger: ContextLogger, stream_repo: Addr<StreamRepositor
     tokio::spawn(fut);
 }
 
-fn create_tcp_filters(socket: TcpStream, buffer: usize) -> (TcpReadFilter, TcpWriteFilter) {
+fn create_tcp_filters(
+    socket: TcpStream,
+    buffer: usize) -> (TcpReadFilter, TcpWriteFilter)
+{
     let (read, write) = socket.into_split();
 
     (TcpReadFilter::new(read, buffer), TcpWriteFilter::new(write))
@@ -656,21 +612,120 @@ impl ByteReadFilter for TcpReadFilter {
 
 #[derive(Clone)]
 struct AppData {
-    stream_repo: Addr<StreamRepository>,
+    stream_repo: Arc<RwLock<StreamRepository>>,
     logger: ContextLogger,
 }
 
-fn get_conn_info(connection: &dyn std::any::Any, _data: &mut actix_web::dev::Extensions) {
-    if let Some(_sock) = connection.downcast_ref::<TcpStream>() {
-        //sock.set_nodelay(true);
-    } else {
-        unreachable!("connection should only be plaintext since no TLS is set up");
+struct WebSocketWriteFilter {
+    sink: SplitSink<WebSocket, Message>,
+}
+
+impl WebSocketWriteFilter {
+    pub fn new(sink: SplitSink<WebSocket, Message>) -> Self {
+        Self { sink }
     }
 }
 
-#[actix_rt::main]
+#[async_trait::async_trait]
+impl ByteWriteFilter2 for WebSocketWriteFilter {
+    async fn start(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn write(&mut self, bytes: bytes::Bytes) -> anyhow::Result<()> {
+        self.sink.send(Message::Binary(bytes.to_vec())).await?;
+
+        Ok(())
+    }
+}
+
+async fn websocket_video(
+    ws: WebSocketUpgrade,
+    Path(stream): Path<String>,
+    Extension(data): Extension<Arc<AppData>>,
+) -> impl IntoResponse {
+    let logger = data.logger.scope();
+
+    debug!(logger, "Received websocket request for '{}'", stream);
+
+    ws.on_upgrade(move |socket| {
+        handle_websocket_video_response(logger, socket, stream, data.clone())
+    })
+}
+
+async fn handle_websocket_video_response(
+    logger: ContextLogger,
+    mut socket: WebSocket,
+    stream: String,
+    data: Arc<AppData>)
+{
+    let queue_receiver = data.stream_repo.read().unwrap().streams.get(&stream).map(|s| s.get_receiver());
+
+
+    if let Some(mut queue_receiver) = queue_receiver {
+        debug!(logger, "Found a stream at {}", stream);
+
+
+        if let Err(e) = start_websocket_filters(&logger, socket, &mut queue_receiver).await
+        {
+            error!(logger, "{}", e);
+        }
+
+        // let graph = FilterGraph::new(Box::new(queue_reader), Box::new(write_filter));
+
+
+        //let ws_stream = WebSocketMediaStream::new(logger.scope(), f, queue_receiver);
+        //let response = ws::start(ws_stream, &req, stream).unwrap();
+
+        //response
+
+    } else {
+        debug!(logger, "Did not find a stream at {}", stream);
+
+    }
+}
+
+async fn start_websocket_filters(
+    logger: &ContextLogger,
+    mut socket: WebSocket,
+    read: &mut (dyn FrameReadFilter + Unpin + Send)) -> anyhow::Result<()>
+{
+    let stream = read.start().await?;
+    let (profile, constraints, level) = get_codec_from_stream(&stream)?;
+
+    let mut framed = BytesMut::with_capacity(4);
+    framed.put_u8(profile);
+    framed.put_u8(constraints);
+    framed.put_u8(level);
+
+    let (mut sender, mut receiver) = socket.split();
+    sender.send(Message::Binary(framed.to_vec())).await?;
+
+    // write
+    let output_filter = WebSocketWriteFilter::new(sender);
+    let fmp4_filter = Box::new(mp42::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
+    let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
+    let mut write_filter = WaitForSyncFrameFilter::new(
+        logger.clone(),
+        write_analyzer,
+    );
+
+    write_filter.start(stream).await?;
+
+    loop {
+        let frame = read.read().await?;
+        write_filter.write(frame).await?;
+    }
+
+    Ok(())
+}
+
+async fn handler() -> Html<&'static str> {
+    Html("<h1>Hello, World!</h1>")
+}
+
 async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyhow::Result<()> {
-    let stream_repo = StreamRepository::default().start();
+    let stream_repo = Arc::new(RwLock::new(StreamRepository::default()));
 
     spawn_listen_for_tcp(logger.scope(), stream_repo.clone(), rtmp_addr);
 
@@ -678,32 +733,38 @@ async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyh
     info!(web_logger, "Starting webserver at {}", web_addr);
     let data = AppData { stream_repo, logger: web_logger, };
 
-    HttpServer::new(move || {
-        App::new()
-            .data(data.clone())
-            .service(hello)
-            .service(ws_stream_video)
-            .service(stream_video)
-            .default_service(web::route().to(not_found))
-    })
-    .on_connect(get_conn_info)
-    .bind(web_addr)?
-    .run()
-    .await?;
+    let app = Router::new()
+        .route("/", get(handler))
+        .route("/ws/:stream", get(websocket_video))
+        .layer(AddExtensionLayer::new(Arc::new(data)));
+
+    axum::Server::bind(&web_addr.parse()?)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (_root, logger) = logger::initialize();
+    tracing_subscriber::fmt::init();
     let _ = dotenv::dotenv();
 
-    let web_addr =
-        std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:8080"));
-    let rtmp_addr =
-        std::env::var("RTMP_BIND_ADDRESS").unwrap_or_else(|_| String::from("localhost:1935"));
 
-    start(logger, &web_addr, rtmp_addr)?;
+    let web_addr =
+        std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1:8080"));
+    let rtmp_addr =
+        std::env::var("RTMP_BIND_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1:1935"));
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            start(logger, &web_addr, rtmp_addr).await
+        })?;
+
 
     Ok(())
 }

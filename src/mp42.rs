@@ -69,7 +69,7 @@ impl FragmentedMp4WriteFilter {
         ftyp.write(&mut bytes)?;
         moov.write(&mut bytes)?;
 
-        self.target.write(bytes.freeze()).await.unwrap();
+        self.target.write(bytes.freeze()).await?;
 
         Ok(())
     }
@@ -140,7 +140,7 @@ impl FragmentedMp4WriteFilter {
             is_keyframe: frame.dependency == FrameDependency::None,
         };
 
-        self.target.write(bytes.freeze()).await.unwrap();
+        self.target.write(bytes.freeze()).await?;
         let _now = Instant::now();
         //println!("frame delivery took: {:?}", now - frame.received);
 
