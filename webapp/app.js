@@ -1,5 +1,5 @@
 HOSTNAME=window.location.hostname;
-WS_ADDRESS="ws://"+HOSTNAME+":8080/ws/test";
+WS_ADDRESS="ws://"+HOSTNAME+":8080/mse/test";
 
 VideoStream = function(videoElement, streamUri) {
     this.source = new MediaSource();
