@@ -30,14 +30,23 @@ bytes = "1.0"
 log = "0.4"
 byteorder = "1.4"
 base64 = "0.13"
+serde = "*"
+serde_json = "*"
 
+webrtc-media = { version = "0.4.0" }
 webrtc = "0.2"
+interceptor = "0.4"
+sdp = "0.4"
 flvparse = "0.1"
 rml_rtmp = "0.4"
 rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }
-h264-reader = { git = "https://github.com/dholroyd/h264-reader" }
+h264-reader = { path = "../h264-reader" } # "0.5"
 fmp4 = { path = "fmp4" }
 tracing-subscriber = "*"
+
+mpeg2ts-reader = "*"
+# srt-tokio = "0.1"
+# srt-protocol = "0.1"
 
 dotenv = "0.15.0"
 

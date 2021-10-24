@@ -1,7 +1,8 @@
 use crate::{
     AudioCodecInfo, ByteReadFilter, CodecInfo, CodecTypeInfo, Fraction, Frame, FrameDependency,
     FrameReadFilter, MediaTime, SoundType, Stream, VideoCodecInfo,
-    VideoCodecSpecificInfo, MediaFrameQueue, FrameAnalyzerFilter, FilterGraph, ByteWriteFilter2
+    VideoCodecSpecificInfo, MediaFrameQueue, FrameAnalyzerFilter, FilterGraph, ByteWriteFilter2,
+    BitstreamFraming,
 };
 
 use bytes::Bytes;
@@ -181,6 +182,11 @@ impl RtmpReadFilter {
             timebase: RTMP_TIMEBASE.clone(),
         };
 
+
+            // let nals = crate::parse_bitstream(Bytes::from(video_packet.avc_data.to_vec()), crate::BitstreamFraming::FourByteLength);
+
+            // info!(self.logger, "RTMP ours: {}", nals.iter().map(|n| format!("{:?}({})", crate::nut_header(n), n.len())).collect::<Vec<_>>().join(","));
+
         let frame = Frame {
             time,
             dependency: if video_tag.header.frame_type == flvparse::FrameType::Key {
@@ -339,7 +345,7 @@ impl RtmpReadFilter {
 
 #[async_trait::async_trait]
 impl FrameReadFilter for RtmpReadFilter {
-    async fn start(&mut self) -> anyhow::Result<Stream> {
+    async fn start(&mut self) -> anyhow::Result<Vec<Stream>> {
         self.read_filter.start().await?;
 
         let metadata = self.wait_for_metadata().await?;
@@ -360,7 +366,18 @@ impl FrameReadFilter for RtmpReadFilter {
             debug!(self.logger, "Audio: {:?}", audio);
         }
 
-        Ok(self.video_stream.clone().unwrap())
+        let streams =
+            [
+                self.video_stream.clone(),
+                self.audio_stream.clone()
+            ];
+
+        Ok(
+            std::array::IntoIter::new(streams)
+                .into_iter()
+                .filter_map(|x| x)
+                .collect()
+        )
     }
 
     async fn read(&mut self) -> anyhow::Result<Frame> {
@@ -414,6 +431,7 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
             width,
             height,
             extra: VideoCodecSpecificInfo::H264 {
+                bitstream_format: BitstreamFraming::FourByteLength,
                 profile_indication: record.profile_indication,
                 profile_compatibility: record.profile_compatibility,
                 level_indication: record.level_indication,
@@ -465,6 +483,7 @@ fn get_video_codec_info(parameter_sets: ParameterSetContext) -> anyhow::Result<C
             width,
             height,
             extra: VideoCodecSpecificInfo::H264 {
+                bitstream_format: BitstreamFraming::FourByteLength,
                 profile_indication,
                 profile_compatibility,
                 level_indication,

@@ -1,7 +1,7 @@
 use axum::{
     Router,
     response::{Html},
-    handler::get,
+    handler::{get, post},
     AddExtensionLayer,
 };
 
@@ -13,15 +13,17 @@ use std::sync::{Arc, RwLock};
 mod media;
 mod mp4;
 mod logger;
+mod webrtc;
 
 mod transport {
-    // pub mod webrtc;
+    pub mod webrtc;
     pub mod mse;
     pub mod http;
 }
 
 mod ingest {
     pub mod rtmp;
+    pub mod mpegts;
 }
 
 use media::*;
@@ -53,8 +55,10 @@ async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyh
 
     let app = Router::new()
         .route("/", get(handler))
-        .route("/mse/:stream", get(transport::mse::websocket_video))
-        .route("/http/:stream", get(transport::http::http_video))
+        .route("/ingest/mpegts/:stream", post(ingest::mpegts::mpegts_ingest))
+        .route("/transport/webrtc/:stream", get(transport::webrtc::websocket_webrtc_signalling))
+        .route("/transport/mse/:stream", get(transport::mse::websocket_video))
+        .route("/transport/http/:stream", get(transport::http::http_video))
         .layer(AddExtensionLayer::new(Arc::new(data)));
 
     axum::Server::bind(&web_addr.parse()?)
@@ -67,12 +71,12 @@ async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyh
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (_root, logger) = logger::initialize();
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
     let _ = dotenv::dotenv();
 
 
     let web_addr =
-        std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1:8080"));
+        std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("0.0.0.0:8080"));
     let rtmp_addr =
         std::env::var("RTMP_BIND_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1:1935"));
 

@@ -249,10 +249,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "bitstream-io"
-version = "1.2.0"
+name = "bitreader"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521f9cfb75191e53bc98586398c3104a2b10812475930f09eeccb5144fc3e68b"
+checksum = "9178181a7d44239c6c8eaafa8688558a2ab5fa04b8855381f2681e9591fb941b"
+dependencies = [
+ "cfg-if",
+]
 
 [[package]]
 name = "bitvec"
@@ -715,6 +718,70 @@ dependencies = [
 ]
 
 [[package]]
+name = "encoding"
+version = "0.2.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b0d943856b990d12d3b55b359144ff341533e516d94098b1d3fc1ac666d36ec"
+dependencies = [
+ "encoding-index-japanese",
+ "encoding-index-korean",
+ "encoding-index-simpchinese",
+ "encoding-index-singlebyte",
+ "encoding-index-tradchinese",
+]
+
+[[package]]
+name = "encoding-index-japanese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04e8b2ff42e9a05335dbf8b5c6f7567e5591d0d916ccef4e0b1710d32a0d0c91"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-korean"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dc33fb8e6bcba213fe2f14275f0963fd16f0a02c878e3095ecfdf5bee529d81"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-simpchinese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d87a7194909b9118fc707194baa434a4e3b0fb6a5a757c73c3adb07aa25031f7"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-singlebyte"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3351d5acffb224af9ca265f435b859c7c01537c0849754d3db3fdf2bfe2ae84a"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-tradchinese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd0e20d5688ce3cab59eb3ef3a2083a5c77bf496cb798dc6fcdb75f323890c18"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding_index_tests"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a246d82be1c9d791c5dfde9a2bd045fc3cbba3fa2b11ad558f27d01712f00569"
+
+[[package]]
 name = "event-listener"
 version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -752,6 +819,12 @@ dependencies = [
  "rand_core 0.5.1",
  "subtle",
 ]
+
+[[package]]
+name = "fixedbitset"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "398ea4fabe40b9b0d885340a2a991a44c8a645624075ad966d21f88688e2b69e"
 
 [[package]]
 name = "flvparse"
@@ -991,13 +1064,10 @@ dependencies = [
 
 [[package]]
 name = "h264-reader"
-version = "0.5.1-dev"
-source = "git+https://github.com/dholroyd/h264-reader#24bc61f62599ee3d3fe4df7f725a00002ac8d484"
+version = "0.4.0"
 dependencies = [
- "bitstream-io",
- "log",
+ "bitreader",
  "memchr",
- "rfc6381-codec 0.1.0",
 ]
 
 [[package]]
@@ -1304,6 +1374,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be9daf03b43bf3842962947c62ba40f411e46a58774c60838038f04a67d17626"
 dependencies = [
  "four-cc",
+]
+
+[[package]]
+name = "mpeg2ts-reader"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f55ded292fa8dd96b970d33f2ef51b13a3dc4b120a9d4e0f1e42f6d24d187517"
+dependencies = [
+ "encoding",
+ "fixedbitset",
+ "log",
+ "smptera-format-identifiers-rust",
 ]
 
 [[package]]
@@ -1714,17 +1796,6 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "rfc6381-codec"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4395f46a67f0d57c57f6a5361f3a9a0c0183a19cab3998892ecdc003de6d8037"
-dependencies = [
- "four-cc",
- "mp4ra-rust",
- "mpeg4-audio-const",
-]
-
-[[package]]
-name = "rfc6381-codec"
 version = "0.1.1-dev"
 source = "git+https://github.com/dholroyd/rfc6381-codec#06ba2c402f46bba42697ad599603760189adb63f"
 dependencies = [
@@ -1874,6 +1945,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdp"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37da0b0e028c0b3cdec13e2a83b592f4e9177eee230f20cdf73401572da14956"
+dependencies = [
+ "rand",
+ "substring",
+ "thiserror",
+ "url",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2014,6 +2097,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
+name = "smptera-format-identifiers-rust"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b836b5d148f3abd518961f83a52ceb4817b49b865b89ddecbe7c69551be27f2e"
+dependencies = [
+ "four-cc",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2068,6 +2160,15 @@ dependencies = [
  "tokio",
  "url",
  "webrtc-util",
+]
+
+[[package]]
+name = "substring"
+version = "1.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42ee6433ecef213b2e72f587ef64a2f5943e7cd16fbd82dbe8bc07486c534c86"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -2605,7 +2706,7 @@ dependencies = [
  "rtcp",
  "rtp",
  "rustls",
- "sdp",
+ "sdp 0.3.0",
  "serde",
  "serde_json",
  "sha2",
@@ -2836,9 +2937,14 @@ dependencies = [
  "h264-reader",
  "hex-slice",
  "hyper",
+ "interceptor",
  "log",
- "rfc6381-codec 0.1.1-dev",
+ "mpeg2ts-reader",
+ "rfc6381-codec",
  "rml_rtmp",
+ "sdp 0.4.0",
+ "serde",
+ "serde_json",
  "slog",
  "slog-async",
  "slog-term",
@@ -2848,6 +2954,7 @@ dependencies = [
  "tower",
  "tracing-subscriber",
  "webrtc",
+ "webrtc-media",
 ]
 
 [[package]]

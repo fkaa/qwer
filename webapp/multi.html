@@ -1,0 +1,73 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="style.css" rel="stylesheet">
+</head>
+<body>
+  <h1>Stream latency test!</h1>
+
+    <button type="button" onclick='setTargetBuffer(0.1)'>100ms</button>
+    <button type="button" onclick='setTargetBuffer(0.25)'>250ms</button>
+    <button type="button" onclick='setTargetBuffer(0.5)'>500ms</button>
+    <button type="button" onclick='setTargetBuffer(1.0)'>1000ms</button>
+
+  <table>
+    <thead>
+    </thead>
+    <tbody>
+      <tr>
+        <td>RTMP/MSE</td>
+        <td>RTMP/WebRTC</td>
+      </tr>
+      <tr>
+        <td>
+            <video id="rtmp-mse" autoplay controls />
+        </td>
+        <td>
+            <video id="rtmp-webrtc" autoplay controls />
+        </td>
+      </tr>
+      <tr>
+        <td>MPEG-TS(Http) /MSE</td>
+        <td>MPEG-TS(Http) /WebRTC</td>
+      </tr>
+      <tr>
+        <td>
+            <video id="mpeg-mse" autoplay controls />
+        </td>
+        <td>
+            <video id="mpeg-webrtc" autoplay controls />
+        </td>
+      </tr>
+    <tbody>
+    </table>
+
+    <script src="stats.js"></script>
+    <script src="app.js"></script>
+    <script src="app2.js"></script>
+    <script>
+        HOSTNAME=window.location.hostname;
+        RTMP_MSE_STREAM="ws://"+HOSTNAME+":8080/transport/mse/test";
+        RTMP_WEBRTC_STREAM="ws://"+HOSTNAME+":8080/transport/webrtc/test";
+        MPEG_MSE_STREAM="ws://"+HOSTNAME+":8080/transport/mse/test2";
+        MPEG_WEBRTC_STREAM="ws://"+HOSTNAME+":8080/transport/webrtc/test2";
+
+        var rtmp_mse = document.getElementById('rtmp-mse');
+        var rtmp_webrtc = document.getElementById('rtmp-webrtc');
+        var mpeg_mse = document.getElementById('mpeg-mse');
+        var mpeg_webrtc = document.getElementById('mpeg-webrtc');
+
+      streams = [
+          new VideoStream(rtmp_mse, RTMP_MSE_STREAM),
+          new VideoStream(mpeg_mse, MPEG_MSE_STREAM),
+      ];
+
+      // new WebRtcVideoStream(rtmp_webrtc, RTMP_WEBRTC_STREAM);
+      // new WebRtcVideoStream(mpeg_webrtc, MPEG_WEBRTC_STREAM);
+
+      function setTargetBuffer(buffer) {
+          streams.forEach(s => s.setTargetBuffer(buffer));
+      }
+    </script>
+</body>
+</html>

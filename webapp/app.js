@@ -1,5 +1,6 @@
 HOSTNAME=window.location.hostname;
-WS_ADDRESS="ws://"+HOSTNAME+":8080/mse/test";
+WS_ADDRESS="ws://"+HOSTNAME+":8080/transport/mse/test";
+WS_ADDRESS2="ws://"+HOSTNAME+":8080/transport/mse/test2";
 
 VideoStream = function(videoElement, streamUri) {
     this.source = new MediaSource();
@@ -73,7 +74,7 @@ VideoStream = function(videoElement, streamUri) {
 
     this.source.onsourceopen = this.onsourceopen;
 
-    this.ws = new WebSocket(WS_ADDRESS);
+    this.ws = new WebSocket(streamUri);
     this.ws.binaryType = "arraybuffer";
     var onopen = function() {
         this.ws.send("start");
@@ -106,9 +107,9 @@ VideoStream.prototype.start = function() {
 }
 
 VideoStream.prototype.gatherStats = function() {
-    var buffered = video.buffered;
+    var buffered = this.video.buffered;
     var bufferedDuration = 0;
-    var bufferStart = video.currentTime;
+    var bufferStart = this.video.currentTime;
     if (buffered.length >= 1) {
         var start = buffered.start(0);
         var end = buffered.end(buffered.length - 1);
@@ -276,10 +277,4 @@ VideoStream.prototype.onvideoerror = function(event) {
 }
 VideoStream.prototype.onsourcebuffererror = function(event) {
 }
-
-
-var mediaSource = new MediaSource();
-var video = document.querySelector('video');
-
-var stream = new VideoStream(video, WS_ADDRESS);
 

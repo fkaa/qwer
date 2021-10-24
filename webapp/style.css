@@ -7,3 +7,12 @@
 .video {
     background-color: #444;
 }
+
+video {
+    background-color: #444;
+    width: 100%;
+}
+
+table, th, td {
+  border: 1px solid black;
+}

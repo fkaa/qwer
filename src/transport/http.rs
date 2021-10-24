@@ -49,9 +49,10 @@ pub async fn start_http_filters(
     let (output_filter, rx): (_, async_channel::Receiver<anyhow::Result<Bytes>>) = ByteStreamWriteFilter::new();
     let fmp4_filter = Box::new(mp4::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
+    let framer = Box::new(BitstreamFramerFilter::new(logger.clone(), BitstreamFraming::FourByteLength, write_analyzer));
     let write_filter = WaitForSyncFrameFilter::new(
         logger.clone(),
-        write_analyzer,
+        framer,
     );
 
     let mut graph = FilterGraph::new(Box::new(read), Box::new(write_filter));

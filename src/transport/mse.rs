@@ -19,6 +19,8 @@ use std::sync::Arc;
 
 use crate::{AppData, ContextLogger};
 
+use crate::media::{BitstreamFramerFilter, BitstreamFraming};
+
 struct WebSocketWriteFilter {
     sink: SplitSink<WebSocket, Message>,
 }
@@ -100,8 +102,8 @@ pub async fn start_websocket_filters(
     socket: WebSocket,
     read: &mut (dyn FrameReadFilter + Unpin + Send)) -> anyhow::Result<()>
 {
-    let stream = read.start().await?;
-    let (profile, constraints, level) = get_codec_from_stream(&stream)?;
+    let streams = read.start().await?;
+    let (profile, constraints, level) = get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
 
     let mut framed = BytesMut::with_capacity(4);
     framed.put_u8(profile);
@@ -115,12 +117,13 @@ pub async fn start_websocket_filters(
     let output_filter = WebSocketWriteFilter::new(sender);
     let fmp4_filter = Box::new(mp4::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
+    let framer = Box::new(BitstreamFramerFilter::new(logger.clone(), BitstreamFraming::FourByteLength, write_analyzer));
     let mut write_filter = WaitForSyncFrameFilter::new(
         logger.clone(),
-        write_analyzer,
+        framer,
     );
 
-    write_filter.start(stream).await?;
+    write_filter.start(streams).await?;
 
     loop {
         let frame = read.read().await?;

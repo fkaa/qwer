@@ -78,14 +78,15 @@ impl FragmentedMp4WriteFilter {
         let media_duration = frame.time.clone() - self.prev_time.clone().unwrap();
         let base_offset = self.prev_time.clone().unwrap() - self.start_time.clone().unwrap();
 
-        //println!("duration: {:?}", base_offset.duration);
-        //dbg!(&duration.duration);
 
         let duration = if media_duration.duration == 0 {
             1800
         } else {
             media_duration.duration
         };
+
+        // println!("duration: {:?}", duration);
+        //dbg!(&duration.duration);
 
         let mut moof = MovieFragmentBox {
             mfhd: MovieFragmentHeaderBox {
@@ -152,10 +153,11 @@ impl FragmentedMp4WriteFilter {
 
 #[async_trait::async_trait]
 impl FrameWriteFilter for FragmentedMp4WriteFilter {
-    async fn start(&mut self, stream: Stream) -> anyhow::Result<()> {
+    async fn start(&mut self, streams: Vec<Stream>) -> anyhow::Result<()> {
         self.target.start().await?;
 
-        self.write_preamble(&stream).await?;
+        // TODO: handle audio streams
+        self.write_preamble(streams.iter().find(|s| s.is_video()).unwrap()).await?;
 
         Ok(())
     }
@@ -187,6 +189,7 @@ fn get_sample_entry_for_codec_type(codec: &CodecTypeInfo) -> SampleEntry {
     match codec {
         CodecTypeInfo::Video(video) => {
             if let VideoCodecSpecificInfo::H264 {
+                bitstream_format,
                 profile_indication,
                 profile_compatibility,
                 level_indication,
