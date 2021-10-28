@@ -27,5 +27,18 @@
 
     <script src="stats.js"></script>
     <script src="app.js"></script>
+
+    <script>
+        HOSTNAME=window.location.hostname;
+        RTMP_MSE_STREAM="ws://"+HOSTNAME+":8080/transport/mse/test";
+
+        var rtmp_mse = document.getElementById('video');
+
+      var stream = new VideoStream(rtmp_mse, RTMP_MSE_STREAM);
+
+      // new WebRtcVideoStream(rtmp_webrtc, RTMP_WEBRTC_STREAM);
+      // new WebRtcVideoStream(mpeg_webrtc, MPEG_WEBRTC_STREAM);
+
+    </script>
 </body>
 </html>
