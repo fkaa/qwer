@@ -29,4 +29,4 @@ StreamHead supports a number of ingest and transport protocols:
 
 # License
 
-StreamHead is licensed under the [Mozilla Public License](LICENSE-MPL).
+StreamHead is licensed under the [AGPL](LICENSE-AGPL).
