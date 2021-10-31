@@ -8,7 +8,7 @@ use axum::{
         Extension,
         Path,
     },
-    response::{IntoResponse},
+    response::IntoResponse,
 };
 
 use bytes::{BufMut, BytesMut};
@@ -110,7 +110,7 @@ pub async fn start_websocket_filters(
     framed.put_u8(constraints);
     framed.put_u8(level);
 
-    let (mut sender, _receiver) = socket.split();
+    let (mut sender, mut receiver) = socket.split();
     sender.send(Message::Binary(framed.to_vec())).await?;
 
     // write
@@ -118,17 +118,26 @@ pub async fn start_websocket_filters(
     let fmp4_filter = Box::new(mp4::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
     let framer = Box::new(BitstreamFramerFilter::new(logger.clone(), BitstreamFraming::FourByteLength, write_analyzer));
-    let mut write_filter = WaitForSyncFrameFilter::new(
+    let mut write = WaitForSyncFrameFilter::new(
         logger.clone(),
         framer,
     );
 
-    write_filter.start(streams).await?;
+    write.start(streams).await?;
 
-    loop {
-        let frame = read.read().await?;
-        write_filter.write(frame).await?;
+    tokio::select! {
+        res = async {
+            loop {
+                let frame = read.read().await?;
+                write.write(frame).await?;
+            }
+        } => res,
+        res = async {
+            loop {
+                if let Some(Ok(Message::Close(close))) = receiver.next().await {
+                    break Err(anyhow::anyhow!("WebSocket closed: {:?}", close));
+                }
+            }
+        } => res
     }
-
-    Ok(())
 }
