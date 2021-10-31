@@ -93,7 +93,7 @@ impl RtmpReadFilter {
         write_filter: TcpWriteFilter,
         rtmp_server_session: ServerSession,
     ) -> Self {
-        let (rtmp_tx, rtmp_rx) = channel(50);
+        let (rtmp_tx, rtmp_rx) = channel(500);
         let stop_source = StopSource::new();
 
         let write_task_logger = logger.scope();
