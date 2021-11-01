@@ -1,280 +1,593 @@
-HOSTNAME=window.location.hostname;
-WS_ADDRESS="ws://"+HOSTNAME+":8080/transport/mse/test";
-WS_ADDRESS2="ws://"+HOSTNAME+":8080/transport/mse/test2";
+'use strict';
 
-VideoStream = function(videoElement, streamUri) {
-    this.source = new MediaSource();
+class DebugLog {
+    record = false;
+    records = [];
+    recordCursor = 0;
+    logCount = 0;
+    maxRecords;
+    maxFirstRecords;
 
-	var container = document.createElement('div');
-	container.style.cssText = 'position:relative;display:inline-block;margin:auto;max-width:100%;';
-
-	videoElement.style.cssText = 'max-width:100%;';
-
-    videoElement.parentNode.appendChild(container);
-    container.appendChild(videoElement);
-
-    this.statsContainer = document.createElement('div');
-    this.statsContainer.style.cssText = 'opacity:0.9;position:absolute;top:5px;left:5px;background-color:#222;padding:5px;';
-    container.appendChild(this.statsContainer);
-
-    var stats = new Stats();
-
-    this.frameStats = stats.addLabel(new Stats.Label('Frames', '#fff'));
-
-    var greenScale = [
-        '#DEEDCF',
-        '#74c67a',
-        '#1d9a6c',
-        '#137177',
-        '#0a2f51'
-    ];
-
-    this.bufferPanel = stats.addPanel(new Stats.Panel('Buffer', greenScale));
-    this.networkPanel = stats.addPanel(new Stats.Panel('Network', greenScale));
-    this.fpsPanel = stats.addPanel(new Stats.Panel('Framerate', greenScale));
-
-    this.statsContainer.appendChild(stats.dom);
-
-
-    this.video = videoElement;
-    this.video.src = URL.createObjectURL(this.source);
-
-    this.video.onwaiting = function(ev) {
-        console.warn("waiting!");
+    constructor(maxRecords) {
+        this.maxFirstRecords = 100;
+        this.maxRecords = maxRecords + this.maxFirstRecords;
+        this.start = new Date();
     }
 
-    this.video.onstalled = function(ev) {
-        console.warn("stalled!");
-    }
-    this.video.onsuspend = function(ev) {
-        console.warn("suspend!");
-    }
-    this.video.onended = function(ev) {
-        console.warn("ended!");
+    getTime() {
+        let now = new Date();
+        let diff = now - this.start;
+
+        return diff / 1000;
     }
 
-    this.video.onerror = function(ev) {
-        console.error(ev);
-    };
-    this.source.onerror = function(ev) {
-        console.error(ev);
-    };
-    this.source.onabort = function(ev) {
-        console.error(ev);
-    };
+    addLog(category, msg) {
+        let time = this.getTime();
 
-    // stats
-    this.networkBytes = 0;
+        if (this.records.length >= this.maxRecords) {
+            this.records[this.maxFirstRecords + this.recordCursor] = { n: this.logCount, category: category, time: time, msg: msg };
+            this.recordCursor = ((this.recordCursor + 1) % (this.maxRecords - this.maxFirstRecords));
+        } else {
+            this.records.push({ n: this.logCount, category: category, time: time, msg: msg });
+        }
 
-    this.frames = [];
-    this.inFlight = false;
-    this.videoStarted = false;
-    this.targetBuffer = 0.1;
-    this.hasInit = false;
+        this.logCount++;
+    }
 
-    this.source.onsourceopen = this.onsourceopen;
+    debug(msg) {
+        this.addLog("dbg", msg);
+        console.log(msg);
+    }
 
-    this.ws = new WebSocket(streamUri);
-    this.ws.binaryType = "arraybuffer";
-    var onopen = function() {
-        this.ws.send("start");
-    };
+    warn(msg) {
+        this.addLog("wrn", msg);
+        console.warn(msg);
+    }
 
-    this.ws.onopen = onopen.bind(this);
-    this.ws.onmessage = this.onwsmessage.bind(this);
+    error(msg) {
+        this.addLog("err", msg);
+        console.error(msg);
+    }
 
-    this.statsInterval = setInterval(this.gatherStats.bind(this), VideoStream.STATS_INTERVAL);
+    getLog() {
+        let log = "";
+
+        function formatRecord(l) {
+            return `${l.n.toString().padEnd(5)} ${l.category} [${l.time.toPrecision(5).padEnd(5)}] ${l.msg}\n`;
+        }
+
+        this.records.slice(0, this.maxFirstRecords).forEach(l => log += formatRecord(l));
+
+        if (this.logCount >= this.maxFirstRecords) {
+            this.records
+                .slice(this.recordCursor)
+                .forEach(l => log += formatRecord(l));
+            this.records
+                .slice(this.maxFirstRecords, this.recordCursor)
+                .forEach(l => log += formatRecord(l));
+        }
+
+        return log;
+    }
 }
 
-VideoStream.STATS_INTERVAL = 250;
+let LOG = new DebugLog(5000);
 
-VideoStream.MSG_INIT = 0;
-VideoStream.MSG_FRAME = 1;
+class StreamStatistics {
+    #parent;
+    #statsContainer;
+    #frameStats;
+    #bufferPanel;
+    #networkPanel;
+    #fpsPanel;
+    #stream;
 
-VideoStream.prototype.feedFrame = function() {
-    if (this.buffer != null && !this.inFlight) {
-        var frame = this.frames.shift();
-        if (frame) {
-            this.inFlight = true;
+    #graphImages;
 
-            this.buffer.appendBuffer(frame);
+    constructor(stream) {
+        this.stream = stream;
+        this.frames = [];
+        this.graphImages = [[], [], []];
+    }
+
+    set statsParent(parent) {
+        this.deleteStatsContainer();
+        this.parent = parent;
+        this.createStatsContainer();
+    }
+
+    get statsParent() {
+        return this.parent;
+    }
+
+    refreshStatsContainer() {
+        this.deleteStatsContainer();
+        this.createStatsContainer();
+    }
+
+    deleteStatsContainer() {
+        if (this.parent == null) {
+            return;
+        }
+
+        this.stream.onframe = null;
+        this.parent.removeChild(this.statsContainer);
+        clearInterval(this.updateInterval);
+    }
+
+    createStatsContainer() {
+        if (this.parent == null) {
+            return;
+        }
+
+        this.stream.onframe = this.onFrame.bind(this);
+        this.statsContainer = document.createElement('div');
+        this.statsContainer.classList.add("video-stats");
+        this.statsContainer.style.cssText = 'opacity:0.9;position:absolute;top:5px;left:5px;background-color:#222;padding:5px;';
+        this.parent.appendChild(this.statsContainer);
+
+        var stats = new Stats();
+
+        this.videoCodec = stats.addLabel(new Stats.Label('Codec', '#fff'));
+        this.frameStats = stats.addLabel(new Stats.Label('Frames', '#fff'));
+
+        var greenScale = [
+            '#DEEDCF',
+            '#74c67a',
+            '#1d9a6c',
+            '#137177',
+            '#0a2f51'
+        ];
+
+        var redScale = [
+            //'#ff0a54',
+            //'#ff5c8a',
+            //'#ff7096',
+            //'#ff99ac',
+            //'#f9bec7',
+            '#fae0e4'
+        ];
+
+        this.bufferPanel = stats.addPanel(
+            new Stats.Panel(
+                'Buffer',
+                greenScale,
+                5000,
+                (min, max, total, avg, stddev) => {
+                    this.saveGraphImages();
+                    return `${Math.round(avg)} ms, min: ${Math.round(min)}, max: ${Math.round(max)}, std-dev: ${stddev.toPrecision(2)} ms`
+                }));
+        this.networkPanel = stats.addPanel(
+            new Stats.Panel(
+                'Network',
+                redScale,
+                1024*8,
+                (min, max, total, avg, stddev) => {
+                    return `${Math.round((total / 1024) * 8)} Kbit/s, std-dev: ${((stddev / 1024) * 8).toPrecision(4)} Kbit`;
+                }));
+        this.fpsPanel = stats.addPanel(
+            new Stats.Panel(
+                'Framerate',
+                greenScale,
+                60,
+                (min, max, total, avg, stddev) => {
+                    return `${Math.round(1000 / avg)} FPS, std-dev: ${stddev.toPrecision(2)} ms`
+                }));
+
+        this.statsContainer.appendChild(stats.dom);
+
+        this.updateInterval = setInterval(() => {
+            this.updateStatsDom();
+        }, 1000/5);
+    }
+
+    onFrame(frame) {
+        this.frames.push({ t: performance.now(), frame: frame, buffered: this.stream.getBufferedVideoDuration() * 1000 });
+    }
+
+    saveGraphImages() {
+        let graphs = [this.bufferPanel, this.networkPanel, this.fpsPanel];
+
+        for (let i = 0; i < graphs.length; i++) {
+            let dst = this.graphImages[i];
+            if (dst.length > 30) {
+                dst.shift();
+            }
+            dst.push(graphs[i].getImageData());
         }
     }
-}
 
-VideoStream.prototype.start = function() {
-    this.ws.send("start");
-}
+    getGraphImages() {
+        let length = this.graphImages[0].length;
+        let canvas = document.createElement("canvas");
+        canvas.width = length * 160;
+        canvas.height = 3 * 20;
+        let context = canvas.getContext("2d");
+        context.fillStyle = "black";
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
-VideoStream.prototype.gatherStats = function() {
-    var buffered = this.video.buffered;
-    var bufferedDuration = 0;
-    var bufferStart = this.video.currentTime;
-    if (buffered.length >= 1) {
-        var start = buffered.start(0);
-        var end = buffered.end(buffered.length - 1);
+        let y = 0;
+        for (let i = 0; i < this.graphImages.length; i++) {
+            let src = this.graphImages[i];
+            let x = 0;
 
-        if (start > bufferStart) { bufferStart = start; }
-        bufferedDuration = end - bufferStart;
+            for (let j = 0; j < src.length; j++) {
+                context.putImageData(src[j], x, y)
+                x += 160;
+            }
+
+            y += 20;
+        }
+
+        return canvas.toDataURL();
     }
 
-    var quality = this.video.getVideoPlaybackQuality();
+    updateStatsDom() {
+        if (this.stream.videoElement == null) {
+            return;
+        }
 
-    var stats = {
-        dropped: quality.droppedVideoFrames,
-        total: quality.totalVideoFrames,
-        width: this.video.videoWidth,
-        height: this.video.videoHeight,
-        buffered: bufferedDuration,
-    };
+        let frames = this.frames ?? [];
+        this.frames = [];
 
-    // basic catch-up:
-    var target = this.targetBuffer;
+        if (frames.length == 0) {
+            this.bufferPanel.push(this.stream.getBufferedVideoDuration() * 1000);
+            this.networkPanel.skip();
+            this.fpsPanel.skip();
+        }
 
-    if (bufferedDuration > target + 1) {
-        this.video.playbackRate = 2;
-    } else if (bufferedDuration > target + 0.1) {
-        this.video.playbackRate = 1.01;
-    } else if (bufferedDuration < target - 0.5) {
-        this.video.playbackRate = 0.98;
-    } else {
-        this.video.playbackRate = 1;
+        frames.forEach((frame) => {
+            let duration = frame.t - this.lastTime;
+
+            this.bufferPanel.push(frame.buffered);
+            this.networkPanel.push(frame.frame.length);
+            this.fpsPanel.push(duration);
+
+            this.lastTime = frame.t;
+        });
+        let quality = this.stream.videoElement.getVideoPlaybackQuality();
+        let rate = this.stream.videoElement.playbackRate;
+        let target = this.stream.targetBuffer;
+
+        let total = quality.totalVideoFrames;
+        let dropped = quality.droppedVideoFrames;
+
+        this.videoCodec.update(this.stream.codec);
+        this.frameStats.update(`${dropped} (D) / ${total}. Buf: ${target * 1000} ms, Rate: ${rate}`);
+        // this.bufferPanel.push(this.stream.getBufferedVideoDuration());
+        // this.bufferPanel.push(this.stream.getBufferedVideoDuration());
+        //this.bufferPanel.update(stats.buffered * 1000, 5000, `${Math.round(stats.buffered * 1000)} ms`);
+        //this.networkPanel.update(this.networkBytes / 1024, 256, (1000 / VideoStream.STATS_INTERVAL) * Math.round(this.networkBytes / 1024) + " Kb/s");
+
+        //var fps = this.framesReceived * (1000 / VideoStream.STATS_INTERVAL);
+        //this.fpsPanel.update(fps, 60, fps + " fps");
+
+        this.framesReceived = 0;
+        this.networkBytes = 0;
     }
 
-    var rate = this.video.playbackRate;
+    stats() {
+        var buffered = this.stream.getBufferedVideoDuration();
 
-    this.frameStats.update(stats.dropped + " (D) / " + stats.total + ". Buf: " + target * 1000 + "ms, Rate: " + rate );
-    this.bufferPanel.update(stats.buffered * 1000, 5000, Math.round(stats.buffered * 1000) + " ms");
-    this.networkPanel.update(this.networkBytes / 1024, 256, (1000 / VideoStream.STATS_INTERVAL) * Math.round(this.networkBytes / 1024) + " Kb/s");
+        /*var quality = this.video.getVideoPlaybackQuality();
 
-    var fps = this.framesReceived * (1000 / VideoStream.STATS_INTERVAL);
-    this.fpsPanel.update(fps, 60, fps + " fps");
+        var stats = {
+            dropped: quality.droppedVideoFrames,
+            total: quality.totalVideoFrames,
+            width: this.video.videoWidth,
+            height: this.video.videoHeight,
+            buffered: bufferedDuration,
+        };*/
 
-    this.framesReceived = 0;
-    this.networkBytes = 0;
+    }
 }
 
-VideoStream.prototype.toggleStats = function() {
-    var visible = this.statsContainer.display != 'none';
-    this.statsContainer.display = visible ? 'none' : 'inline-block';
-}
+class MseStream {
+    #statsContainer;
+    #videoElement;
+    #streamUri;
 
-VideoStream.prototype.setTargetBuffer = function(target) {
-    this.targetBuffer = target;
-}
+    // WebSocket stuff
+    #webSocket;
+    #hasStartedStream;
+    #isExpectingData;
 
-VideoStream.prototype.onwsinit = function(init) {
-    var profile = init[0];
-    var constraints = init[1];
-    var level = init[2];
+    // MSE stuff
+    #mseSource;
+    #mseBuffer;
+    #frames;
+    #hasInFlightUpdates;
+    #targetBuffer;
+    #videoStarted;
 
-    var codec = "video/mp4; codecs=\"avc1." + tohex(profile) + tohex(constraints) + tohex(level) + "\"";
 
-    console.log("codec: " + codec);
+    #stats
 
-    this.buffer = this.source.addSourceBuffer(codec);
-    this.buffer.mode = "sequence";
-    this.buffer.onerror = function(ev) {
-        console.error(ev);
-    };
-    this.buffer.onupdateend = this.onupdateend.bind(this);
-    this.feedInterval = setInterval(function() {
+    // Events
+    onconnectionfail;
+    onvideochanged
+    onframe;
+
+    constructor(streamUri, options) {
+        this.streamUri = streamUri;
+        this.videoStarted = false;
+        this.hasStartedStream = false;
+        this.hasInFlightUpdates = false;
+        this.target = 0.5;
+        this.stats = new StreamStatistics(this);
+        this.frames = [];
+    }
+
+    set targetBuffer(target) {
+        LOG.debug(`Target buffer set to ${target}`);
+        this.target = target;
+    }
+
+    get targetBuffer() {
+        return this.target;
+    }
+
+    get video() {
+        return this.videoElement;
+    }
+
+    set video(videoElement) {
+        this.removeStream();
+        this.videoElement = videoElement;
+        this.attachStream();
+    }
+
+    set statsContainer(containerElement) {
+        this.stats.statsParent = containerElement;
+    }
+
+    get statsContainer() {
+        return this.stats.statsParent;
+    }
+
+    reconnect() {
+        this.removeStream();
+        this.attachStream();
+    }
+
+    getDebugLogs() {
+        LOG.debug("Generating debug logs");
+
+        let logs = `Graphs:\n${this.stats.getGraphImages()}\n\nLogs:\n${LOG.getLog()}`;
+
+        return logs;
+    }
+
+    attachStream() {
+        this.eventController = new AbortController();
+        let signal = this.eventController.signal;
+
+        LOG.debug(`Connecting to '${this.streamUri}'`);
+
+
+        this.videoElement.addEventListener("playing", (e) => LOG.debug("playing"), { signal: signal });
+        this.videoElement.addEventListener("pause", (e) => LOG.warn("pause"), { signal: signal });
+        this.videoElement.addEventListener("waiting", (e) => LOG.warn("waiting"), { signal: signal });
+        this.videoElement.addEventListener("stalled", (e) => LOG.warn("stalled"), { signal: signal });
+        this.videoElement.addEventListener("suspend", (e) => LOG.warn("suspend"), { signal: signal });
+        this.videoElement.addEventListener("error", (e) => LOG.error("error"), { signal: signal });
+
+        this.webSocket = new WebSocket(this.streamUri);
+        this.webSocket.binaryType = "arraybuffer";
+        this.webSocket.addEventListener("close", this.webSocketClose.bind(this), { signal: signal });
+        this.webSocket.addEventListener("error", this.webSocketError.bind(this), { signal: signal });
+        this.webSocket.addEventListener("open", this.webSocketOpen.bind(this), { signal: signal });
+        this.webSocket.addEventListener("message", this.webSocketMessage.bind(this), { signal: signal });
+
+        this.stats.createStatsContainer();
+    }
+
+    removeStream() {
+        LOG.debug("Removing media source");
+
+        clearInterval(this.framePollInterval);
+        clearInterval(this.playbackControlInterval);
+
+        if (this.mseSource != null) {
+            this.isExpectingData = false;
+            this.hasStartedStream = false;
+            this.hasInFlightUpdates = false;
+            this.frames = [];
+            this.webSocket.close(1000, "Shutting down stream");
+            this.mseSource.endOfStream();
+            this.mseSource.removeSourceBuffer(this.mseBuffer);
+            this.eventController?.abort();
+        }
+
+        this.stats.deleteStatsContainer();
+
+        this.videoStarted = false;
+        this.mseSource = null;
+        this.mseBuffer = null;
+        this.webSocket = null;
+    }
+
+    streamFailed() {
+
+    }
+
+    webSocketOpen(event) {
+        LOG.debug(`WebSocket connection to '${this.streamUri}' established`);
+
+        this.isExpectingData = true;
+    }
+
+    webSocketClose(event) {
+        LOG.warn(`WebSocket connection to '${this.streamUri}' closed: ${event.code}`);
+
+        if (this.onconnectionfail != null) {
+            this.onconnectionfail(event);
+        }
+
+        this.streamFailed();
+    }
+
+    webSocketError(event) {
+        LOG.warn(`WebSocket connection error`);
+
+        this.streamFailed();
+    }
+
+    webSocketMessageInit(bytes) {
+        const profile = bytes[0];
+        const constraints = bytes[1];
+        const level = bytes[2];
+
+        // TODO: this should be sent from serverside
+        this.codec = `video/mp4; codecs="avc1.${tohex(profile)}${tohex(constraints)}${tohex(level)}"`;
+
+        LOG.debug(`Received codec parameters: ${this.codec}`);
+
+        let signal = this.eventController.signal;
+
+        this.mseSource = new MediaSource();
+        this.mseSource.addEventListener("sourceopen", this.mseSourceOpen.bind(this));
+        this.mseSource.addEventListener("sourceclose", this.mseSourceClose.bind(this));
+
+        let mseSrc = URL.createObjectURL(this.mseSource);
+        this.videoElement.src = mseSrc;
+    }
+
+    mseBufferError(event) {
+        LOG.error(`MSE buffer error: ${event}`);
+    }
+
+    mseSourceClose(event) {
+        LOG.debug(`MSE source closed: ${event}`);
+    }
+
+    mseSourceOpen(event) {
+        this.registerVideoEvents();
+
+        let signal = this.eventController.signal;
+
+        this.mseBuffer = this.mseSource.addSourceBuffer(this.codec);
+        this.mseBuffer.mode = "sequence";
+        this.mseBuffer.addEventListener("error", this.mseBufferError.bind(this), { signal: signal });
+        this.mseBuffer.addEventListener("updateend", this.mseBufferUpdateEnd.bind(this), { signal: signal });
+
+
+        this.playbackControlInterval = setInterval(
+            () => {
+                this.adjustPlaybackSpeed();
+            },
+            1000/5);
+        this.framePollInterval = setInterval(
+            () => {
+                this.feedFrame();
+            },
+            1000/60);
+    }
+
+    mseBufferUpdateEnd(event) {
+        const buffered = this.getBufferedVideoDuration();
+
+        if (!this.videoStarted && buffered >= this.targetBuffer) {
+            LOG.debug(`Starting video with ${buffered} seconds buffered`);
+
+            this.videoElement.play();
+            this.videoStarted = true;
+        }
+
+        this.hasInFlightUpdates = false;
         this.feedFrame();
-    }.bind(this), 1000/60);
-}
-
-VideoStream.prototype.onwsframe = function(frame) {
-    this.framesReceived += 1;
-
-    this.frames.push(frame);
-    this.feedFrame();
-}
-
-VideoStream.prototype.onsourceopen = function(event) {
-}
-
-VideoStream.prototype.onupdateend = function(event) {
-{
-    var buffered = this.video.buffered;
-    var bufferedDuration = 0;
-    var bufferStart = this.video.currentTime;
-    if (buffered.length >= 1) {
-        var start = buffered.start(0);
-        var end = buffered.end(buffered.length - 1);
-
-        if (start > bufferStart) { bufferStart = start; }
-        bufferedDuration = end - bufferStart;
     }
 
-    if (this.prevTime == this.video.currentTime && bufferedDuration < this.targetBuffer) {
-        //console.log("Pausing to catch up");
-        //this.video.pause();
-        this.stalled = this.stalled + 1;
-    } else {
-        console.log("Stalled for " + this.stalled);
-        this.stalled = 0;
-        if (this.video.paused) {
-            //console.log("Unpausing to catch up");
-            //this.video.play();
+    webSocketSegment(segment) {
+        if (this.onframe != null) {
+            this.onframe(segment);
+        }
+
+        this.frames.push(segment);
+        this.feedFrame();
+    }
+
+    webSocketMessage(event) {
+        if (!this.isExpectingData) {
+            return;
+        }
+
+        var bytes = new Uint8Array(event.data);
+
+        // this.networkBytes += bytes.length;
+
+        if (!this.hasStartedStream) {
+            this.hasStartedStream = true;
+            this.webSocketMessageInit(bytes);
+        } else {
+            this.webSocketSegment(bytes);
         }
     }
 
-    this.prevTime = this.video.currentTime;
+    registerVideoEvents() {
 
-    //console.log("time: " + this.video.currentTime + ", buffered: " + bufferedDuration);
-}
-
-
-
-    this.inFlight = false;
-
-    if (!this.videoStarted && bufferedDuration > this.targetBuffer) {
-        console.log("Starting");
-
-        this.video.play()
-        this.videoStarted = true;
     }
 
-    this.feedFrame();
-}
-
-// websocket callback
-VideoStream.prototype.onwsmessage = function(event) {
-    var bytes = new Uint8Array(event.data);
-
-    this.networkBytes += bytes.length;
-
-    if (!this.hasInit) {
-        this.onwsinit(bytes);
-        this.hasInit = true;
-    } else {
-        this.onwsframe(bytes);
+    removeEvents() {
+        this.eventController.abort();
     }
 
-    /*var type = bytes[0];
+    // Gets the amount of buffered video from the current time in the
+    // video
+    getBufferedVideoDuration() {
+        if (this.videoElement == null) {
+            return 0;
+        }
 
-    // console.log("type: " + type);
+        let bufferedDuration = 0;
+        let bufferStart = this.videoElement.currentTime;
 
-    var rest = bytes.subarray(1);
+        // The <video> tag can buffer ranges of time, but we only care
+        // about the latest one
+        const buffered = this.videoElement.buffered;
 
-    switch (type) {
-        case VideoStream.MSG_INIT:
+        if (buffered.length >= 1) {
+            const start = buffered.start(0);
+            const end = buffered.end(buffered.length - 1);
 
-            break;
+            if (start > bufferStart) {
+                bufferStart = start;
+            }
 
-        case VideoStream.MSG_FRAME:
-            this.onwsframe(rest);
-            break;
-    }*/
+            bufferedDuration = end - bufferStart;
+        }
+
+        return bufferedDuration;
+    }
+
+    adjustPlaybackSpeed() {
+        let buffered = this.getBufferedVideoDuration();
+        let target = this.targetBuffer;
+
+        let playbackRate = 1;
+        if (buffered > target + 1) {
+            playbackRate = 2;
+        } else if (buffered > target + 0.1) {
+            playbackRate = 1.01;
+        } else if (buffered < target - 0.5) {
+            playbackRate = 0.98;
+        }
+
+        this.videoElement.playbackRate = playbackRate;
+    }
+
+    feedFrame() {
+        if (this.mseBuffer != null && !this.hasInFlightUpdates) {
+            var frame = this.frames.shift();
+
+            if (frame) {
+                this.hasInFlightUpdates = true;
+                this.mseBuffer.appendBuffer(frame);
+            }
+        }
+    }
 }
 
 function tohex(num) {
     return num.toString(16).padStart(2, "0");
 }
-
-
-VideoStream.prototype.onvideoerror = function(event) {
-}
-VideoStream.prototype.onsourcebuffererror = function(event) {
-}
-

@@ -5,11 +5,15 @@
 </head>
 <body>
     <h1>My stream!</h1>
-    <button type="button" onclick='stream.setTargetBuffer(0.1)'>100ms</button>
-    <button type="button" onclick='stream.setTargetBuffer(0.25)'>250ms</button>
-    <button type="button" onclick='stream.setTargetBuffer(0.5)'>500ms</button>
-    <button type="button" onclick='stream.setTargetBuffer(1.0)'>1000ms</button>
-    <div class="video-wrapper">
+    <button type="button" onclick='stream.targetBuffer = 0.1'>100ms</button>
+    <button type="button" onclick='stream.targetBuffer = 0.25'>250ms</button>
+    <button type="button" onclick='stream.targetBuffer = 0.5'>500ms</button>
+    <button type="button" onclick='stream.targetBuffer = 1.0'>1000ms</button>
+    <button type="button" onclick='stream.removeStream()'>detach</button>
+    <button type="button" onclick='stream.attachStream()'>attach</button>
+    <button type="button" onclick='stream.statsContainer = stream.statsContainer == null ? container : null'>toggle debug</button>
+    <button type="button" onclick='copyLogs()'>copy logs to clipboard</button>
+    <div id="video-container" class="video-wrapper">
         <video class="video" id="video" controls>
             Not supported!
         </video>
@@ -29,16 +33,21 @@
     <script src="app.js"></script>
 
     <script>
-        HOSTNAME=window.location.hostname;
-        RTMP_MSE_STREAM="ws://"+HOSTNAME+":8080/transport/mse/test";
+      HOSTNAME=window.location.hostname;
+      RTMP_MSE_STREAM="ws://"+HOSTNAME+":8080/transport/mse/test";
 
-        var rtmp_mse = document.getElementById('video');
+      let container = document.getElementById('video-container');
+      let rtmp_mse = document.getElementById('video');
+      let stream = new MseStream(RTMP_MSE_STREAM);
+      stream.onconnectionfail = function(event) {
+        console.log("Failed to connect: " + event);
+      };
+      //stream.statsContainer = container;
+      stream.video = rtmp_mse;
 
-      var stream = new VideoStream(rtmp_mse, RTMP_MSE_STREAM);
-
-      // new WebRtcVideoStream(rtmp_webrtc, RTMP_WEBRTC_STREAM);
-      // new WebRtcVideoStream(mpeg_webrtc, MPEG_WEBRTC_STREAM);
-
+      function copyLogs() {
+          navigator.clipboard.writeText(stream.getDebugLogs());
+      }
     </script>
 </body>
 </html>

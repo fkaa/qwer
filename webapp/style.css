@@ -1,8 +1,17 @@
 .video-wrapper {
     width: 100%;
-    background-color:grey;
-    text-align:center;
+    background-color: grey;
+    text-align: center;
+    position: relative;
 }
+
+/*.video-wrapper:hover .video-stats {
+    display: block;
+}
+
+.video-stats {
+    display: none;
+}*/
 
 .video {
     background-color: #444;
@@ -11,8 +20,4 @@
 video {
     background-color: #444;
     width: 100%;
-}
-
-table, th, td {
-  border: 1px solid black;
 }

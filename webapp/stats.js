@@ -1,50 +1,20 @@
-(function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-	typeof define === 'function' && define.amd ? define(factory) :
-	(global.Stats = factory());
-}(this, (function () { 'use strict';
-
-/**
- * @author mrdoob / http://mrdoob.com/
- */
+'use strict';
 
 var Stats = function () {
+    var container = document.createElement( 'table' );
+    container.style.cssText = 'font-size:11px;color:#fff;cursor:pointer;z-index:10000';
 
-	var mode = 0;
-
-	var container = document.createElement( 'table' );
-	container.style.cssText = 'font-size:11px;color:#fff;cursor:pointer;z-index:10000';
-	/*container.addEventListener( 'click', function ( event ) {
-
-		event.preventDefault();
-		showPanel( ++ mode % container.children.length );
-
-	}, false );*/
-
-	//
-
-	function addPanel(panel) {
-		container.appendChild( panel.dom );
-		return panel;
-	}
-
-    function addLabel(label) {
-        container.appendChild(label.dom);
-        return label;
-    }
-
-	var beginTime = ( performance || Date ).now(), prevTime = beginTime, frames = 0;
-
-	//var fpsPanel = addPanel( new Stats.Panel( 'FPS', '#0ff', '#002' ) );
-	//var msPanel = addPanel( new Stats.Panel( 'MS', '#0f0', '#020' ) );
-
-	return {
-		dom: container,
-
-		addPanel: addPanel,
-		addLabel: addLabel,
-	};
-
+    return {
+	dom: container,
+	addPanel: function (panel) {
+            container.appendChild( panel.dom );
+            return panel;
+        },
+	addLabel: function (label) {
+            container.appendChild(label.dom);
+            return label;
+        }
+    };
 };
 
 Stats.Label = function(name, fg) {
@@ -55,32 +25,20 @@ Stats.Label = function(name, fg) {
     label.innerText = name;
 
     var value = document.createElement('td');
+    value.setAttribute("colspan", "2");
 
     row.appendChild(label);
     row.appendChild(value);
-    
-	return {
-		dom: row,
-		update: function (text) {
-            value.innerText = text;
-		}
-
-	};
-};
-
-function getPaintedColumn(value, scale) {
-    var base = Math.floor(value * scale.length);
-    var index = Math.ceil(value * scale.length);
 
     return {
-        baseIndex: Math.max(base-1, 0),
-        index: base,
-        height: Math.min(value * scale.length, 1),
-        partialHeight: (value - (base / scale.length)) * scale.length
+	dom: row,
+	update: function (text) {
+            value.innerText = text;
+	}
     };
-}
+};
 
-Stats.Panel = function (name, scale) {
+Stats.Panel = function (name, scale, maxValue, updateLabel) {
     var row = document.createElement('tr');
 
     var label = document.createElement('td');
@@ -95,45 +53,103 @@ Stats.Panel = function (name, scale) {
     row.appendChild(valueText);
 
 
-	var min = Infinity, max = 0, round = Math.round;
-	var PR = round( window.devicePixelRatio || 1 ) ;
+    var min = Infinity, max = 0, round = Math.round;
+    var PR = round( window.devicePixelRatio || 1 ) ;
 
     var index = 0;
-    var w = 80;
+    var w = 160;
     var h = 16;
 
-	var WIDTH = w * PR, HEIGHT = h * PR;
+    var WIDTH = w * PR, HEIGHT = h * PR;
 
-	var canvas = document.createElement( 'canvas' );
-	canvas.width = WIDTH;
-	canvas.height = HEIGHT;
-	canvas.style.cssText = 'width:'+w*2+'px;height:'+h+';image-rendering:crisp-edges;';
+    var canvas = document.createElement( 'canvas' );
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    canvas.style.cssText = 'width:'+w+'px;height:'+h+';image-rendering:crisp-edges;';
 
-	var context = canvas.getContext( '2d' );
+    var context = canvas.getContext( '2d' );
 
     context.imageSmoothingEnabled = false;
-	//context.fillStyle = bg;
-	//context.fillRect( 0, 0, WIDTH, HEIGHT);
+    context.fillStyle = "black";
+    context.fillRect( 0, 0, WIDTH, HEIGHT);
 
     value.appendChild(canvas);
 
-	return {
+    return {
+        maxValues: w,
+        maxValue: maxValue,
+        cursor: 0,
+        values: [],
+	dom: row,
+        calcStats: function() {
+            let sum = 0, stddev = 0, min = Math.pow(2, 32), max = 0;
 
-		dom: row,
+            for (let i = 0; i < this.values.length; i++) {
+                sum += this.values[i];
+                min = Math.min(min, this.values[i]);
+                max = Math.max(min, this.values[i]);
+            }
 
-		update: function (value, maxValue, text) {
+            let avg = sum / this.values.length;
+
+            let variance = 0;
+            for (let i = 0; i < this.values.length; i++) {
+                variance += Math.pow(this.values[i] - avg, 2);
+            }
+            variance = variance / this.values.length;
+
+            return { min: min, max: max, total: sum, average: avg, stddev: Math.sqrt(variance) };
+        },
+        push: function (value) {
+            if (this.values.length >= this.maxValues) {
+                if (this.cursor == 0) {
+                    let stats = this.calcStats();
+                    this.label = updateLabel(stats.min, stats.max, stats.total, stats.average, stats.stddev);
+                }
+
+                this.values[this.cursor] = value;
+                this.cursor = (this.cursor + 1) % this.maxValues;
+            } else {
+                this.values.push(value);
+            }
+
+            this.update(value, this.maxValue);
+        },
+        skip: function() {
+            this.update(0, this.maxValue);
+        },
+        getImageData: function() {
+            let context = canvas.getContext("2d");
+            return context.getImageData(0, 0, canvas.width, canvas.height);
+        },
+	update: function (value, maxValue) {
+            function getPaintedColumn(value, scale) {
+                var base = Math.floor(value * scale.length);
+                var index = Math.ceil(value * scale.length);
+
+                return {
+                    baseIndex: Math.max(base-1, 0),
+                    index: base,
+                    height: Math.min(value * scale.length, 1),
+                    partialHeight: (value - (base / scale.length)) * scale.length
+                };
+            }
+
 
             if (value > 0) {
                 min = Math.min( min, value );
                 max = Math.max( max, value );
 
                 /*context.fillStyle = bg;
-                context.globalAlpha = 1;
-                context.fillRect( 0, 0, WIDTH, HEIGHT );
-                context.fillStyle = fg;*/
+                  context.globalAlpha = 1;
+                  context.fillRect( 0, 0, WIDTH, HEIGHT );
+                  context.fillStyle = fg;*/
 
                 var factor = value / maxValue;
                 var col = getPaintedColumn(factor, scale);
+
+                context.fillStyle = "black";
+                context.fillRect(index, 0, 1, HEIGHT);
 
                 var hh = col.height * HEIGHT;
                 context.fillStyle = scale[col.baseIndex];
@@ -145,19 +161,13 @@ Stats.Panel = function (name, scale) {
 
             }
 
-            if (text) {
-                valueText.innerText = text;
+            if (this.label) {
+                valueText.innerText = this.label;
             }
 
             context.clearRect(index + 1, 0, 1, HEIGHT);
 
             index = (index + 1) % WIDTH;
-		}
-
-	};
-
+	}
+    };
 };
-
-return Stats;
-
-})));
