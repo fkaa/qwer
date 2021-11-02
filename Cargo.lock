@@ -1065,6 +1065,7 @@ dependencies = [
 [[package]]
 name = "h264-reader"
 version = "0.4.0"
+source = "git+https://github.com/fkaa/h264-reader#daaa06d497e76306cfe373e31aafcb9a4da7d5fe"
 dependencies = [
  "bitreader",
  "memchr",

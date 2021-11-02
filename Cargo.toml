@@ -41,7 +41,7 @@ sdp = "0.4"
 flvparse = "0.1"
 rml_rtmp = "0.4"
 rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }
-h264-reader = { path = "../h264-reader" } # "0.5"
+h264-reader = { git = "https://github.com/fkaa/h264-reader" } # "0.5"
 fmp4 = { path = "fmp4" }
 tracing-subscriber = "*"
 
