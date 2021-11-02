@@ -556,7 +556,7 @@ async fn do_rtmp_handshake(
     logger: &ContextLogger,
     read: &mut TcpReadFilter,
     write: &mut TcpWriteFilter,
-) -> anyhow::Result<ServerSession> {
+) -> anyhow::Result<(ServerSession, String)> {
     use failure::Fail;
 
     let mut handshake = Handshake::new(PeerType::Server);
@@ -585,6 +585,7 @@ async fn do_rtmp_handshake(
         .map_err(|e| e.kind.compat())?;
 
     let mut authenticated = false;
+    let mut app = None;
     let mut r = VecDeque::new();
     let mut application_name = None;
 
@@ -633,6 +634,7 @@ async fn do_rtmp_handshake(
                                 }*/
 
                                 authenticated = true;
+                                app = Some(app_name);
 
                                 debug!(logger, "Accepted publish stream request");
                             }
@@ -644,8 +646,8 @@ async fn do_rtmp_handshake(
             }
         }
 
-        if authenticated {
-            return Ok(session);
+        if let (true, Some(app)) = (authenticated, app.take()) {
+            return Ok((session, app));
         }
 
         // debug!("reading from endpoint!");
@@ -665,11 +667,9 @@ async fn handle_tcp_socket(
     socket: TcpStream,
     stream_repo: Arc<RwLock<StreamRepository>>,
 ) -> anyhow::Result<()> {
-    let sid = String::from("test");
-
     let (mut read_filter, mut write_filter) = create_tcp_filters(socket, 188 * 8);
 
-    let server_session = do_rtmp_handshake(&logger, &mut read_filter, &mut write_filter).await?;
+    let (server_session, sid) = do_rtmp_handshake(&logger, &mut read_filter, &mut write_filter).await?;
 
     let filter_logger = logger.scope();
 
@@ -682,10 +682,9 @@ async fn handle_tcp_socket(
     );
     let rtmp_analyzer = FrameAnalyzerFilter::read(filter_logger.clone(), Box::new(rtmp_filter));
 
-    //let file = tokio::fs::File::create("test.fmp4").await.unwrap();
-    //let mp4_writer = mp42::FragmentedMp4WriteFilter::new(Box::new(FileWriteFilter::new(file)));
-    //let mut graph = FilterGraph::new(Box::new(rtmp_filter), Box::new(mp4_writer));
     let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
+
+    info!(logger, "Starting a stream at '{}'", sid);
 
     stream_repo
         .write()
