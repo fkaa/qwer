@@ -121,13 +121,15 @@ pub async fn start_websocket_filters(
     let output_filter = WebSocketWriteFilter::new(sender);
     let fmp4_filter = Box::new(mp4::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
-    let framer = Box::new(BitstreamFramerFilter::new(logger.clone(), BitstreamFraming::FourByteLength, write_analyzer));
-    let mut write = WaitForSyncFrameFilter::new(
+    let mut write = Box::new(BitstreamFramerFilter::new(
         logger.clone(),
-        framer,
-    );
+        BitstreamFraming::FourByteLength,
+        write_analyzer,
+    ));
 
+    let first_frame = wait_for_sync_frame(logger, read).await?;
     write.start(streams).await?;
+    write.write(first_frame).await?;
 
     tokio::select! {
         res = async {
