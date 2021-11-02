@@ -2,10 +2,10 @@ use async_channel::{Receiver, Sender};
 
 use tokio::fs::File;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::collections::HashMap;
 
 use h264_reader::{
     annexb::{AnnexBReader, NalReader},
@@ -18,20 +18,24 @@ use h264_reader::{
     Context,
 };
 
-use byteorder::{ByteOrder, BigEndian};
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use byteorder::{BigEndian, ByteOrder};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::ContextLogger;
 
-use super::{BitstreamFraming, Frame, FrameDependency, Stream, FrameWriteFilter, FrameReadFilter};
+use super::{BitstreamFraming, Frame, FrameDependency, FrameReadFilter, FrameWriteFilter, Stream};
 
-use slog::{info, debug};
+use slog::{debug, info};
 
 const THREE_BYTE_STARTCODE: [u8; 3] = [0, 0, 1];
 const FOUR_BYTE_STARTCODE: [u8; 4] = [0, 0, 0, 1];
 
 /// Parses a H.26x bitstream framed in AVC format (length prefix) into NAL units.
-fn parse_bitstream_length_field<F: Fn(&mut Bytes) -> usize>(mut bitstream: Bytes, length_size: usize, read: F) -> Vec<Bytes> {
+fn parse_bitstream_length_field<F: Fn(&mut Bytes) -> usize>(
+    mut bitstream: Bytes,
+    length_size: usize,
+    read: F,
+) -> Vec<Bytes> {
     let mut nal_units = Vec::new();
 
     while bitstream.len() > length_size {
@@ -55,14 +59,22 @@ fn parse_bitstream_start_codes(bitstream: Bytes) -> Vec<Bytes> {
     reader.push(&mut ctx, &bitstream);
     reader.end_units(&mut ctx);
 
-    ctx.user_context.nal_units.into_iter().map(|b| b.freeze()).collect()
+    ctx.user_context
+        .nal_units
+        .into_iter()
+        .map(|b| b.freeze())
+        .collect()
 }
 
 /// Parses a H.26x bitstream in a given [BitstreamFraming] into NAL units.
 pub fn parse_bitstream(bitstream: Bytes, source: BitstreamFraming) -> Vec<Bytes> {
     match source {
-        BitstreamFraming::TwoByteLength => parse_bitstream_length_field(bitstream, 2, |b| b.get_u16() as usize),
-        BitstreamFraming::FourByteLength => parse_bitstream_length_field(bitstream, 4, |b| b.get_u32() as usize),
+        BitstreamFraming::TwoByteLength => {
+            parse_bitstream_length_field(bitstream, 2, |b| b.get_u16() as usize)
+        }
+        BitstreamFraming::FourByteLength => {
+            parse_bitstream_length_field(bitstream, 4, |b| b.get_u32() as usize)
+        }
         BitstreamFraming::FourByteStartCode => parse_bitstream_start_codes(bitstream),
     }
 }
@@ -80,7 +92,10 @@ fn frame_nal_units_with_start_codes(nal_units: Vec<Bytes>, codes: &[u8]) -> Byte
 }
 
 /// Frames NAL units with a length prefix before each NAL.
-fn frame_nal_units_with_length<F: Fn(&mut BufMut, usize)>(nal_units: Vec<Bytes>, write: F) -> BytesMut {
+fn frame_nal_units_with_length<F: Fn(&mut BufMut, usize)>(
+    nal_units: Vec<Bytes>,
+    write: F,
+) -> BytesMut {
     let mut bitstream = BytesMut::new();
 
     for nut in nal_units {
@@ -94,15 +109,25 @@ fn frame_nal_units_with_length<F: Fn(&mut BufMut, usize)>(nal_units: Vec<Bytes>,
 /// Frame NAL units with the specified [BitstreamFraming].
 pub fn frame_nal_units(nal_units: Vec<Bytes>, target: BitstreamFraming) -> BytesMut {
     match target {
-        BitstreamFraming::TwoByteLength => frame_nal_units_with_length(nal_units, |b, l| b.put_u16(l as u16)),
-        BitstreamFraming::FourByteLength => frame_nal_units_with_length(nal_units, |b, l| b.put_u32(l as u32)),
-        BitstreamFraming::FourByteStartCode => frame_nal_units_with_start_codes(nal_units, &FOUR_BYTE_STARTCODE[..]),
+        BitstreamFraming::TwoByteLength => {
+            frame_nal_units_with_length(nal_units, |b, l| b.put_u16(l as u16))
+        }
+        BitstreamFraming::FourByteLength => {
+            frame_nal_units_with_length(nal_units, |b, l| b.put_u32(l as u32))
+        }
+        BitstreamFraming::FourByteStartCode => {
+            frame_nal_units_with_start_codes(nal_units, &FOUR_BYTE_STARTCODE[..])
+        }
     }
 }
 
 /// Converts a H.26x bitstream from a source [BitstreamFraming] to a
 /// target [BitstreamFraming].
-fn convert_bitstream(mut bitstream: Bytes, source: BitstreamFraming, target: BitstreamFraming) -> Bytes {
+fn convert_bitstream(
+    mut bitstream: Bytes,
+    source: BitstreamFraming,
+    target: BitstreamFraming,
+) -> Bytes {
     if source == target {
         return bitstream;
     }
@@ -114,10 +139,11 @@ fn convert_bitstream(mut bitstream: Bytes, source: BitstreamFraming, target: Bit
 pub fn is_video_nal_unit(nal: &Bytes) -> bool {
     matches!(
         NalHeader::new(nal[0]).map(|h| h.nal_unit_type()),
-        Ok(UnitType::SeqParameterSet) |
-        Ok(UnitType::PicParameterSet) |
-        Ok(UnitType::SliceLayerWithoutPartitioningNonIdr) |
-        Ok(UnitType::SliceLayerWithoutPartitioningIdr))
+        Ok(UnitType::SeqParameterSet)
+            | Ok(UnitType::PicParameterSet)
+            | Ok(UnitType::SliceLayerWithoutPartitioningNonIdr)
+            | Ok(UnitType::SliceLayerWithoutPartitioningIdr)
+    )
 }
 
 pub fn nut_header(nal: &Bytes) -> Option<UnitType> {
@@ -144,17 +170,14 @@ struct NalFramer {
 
 impl NalFramer {
     pub fn new() -> Self {
-        Self {
-            nal_start: 0,
-        }
+        Self { nal_start: 0 }
     }
 }
 
 impl NalHandler for NalFramer {
     type Ctx = NalFramerContext;
 
-    fn start(&mut self, ctx: &mut Context<Self::Ctx>, _header: NalHeader) {
-    }
+    fn start(&mut self, ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
 
     fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
         ctx.user_context.current_nal_unit.extend(buf);
@@ -164,7 +187,9 @@ impl NalHandler for NalFramer {
         let mut nal_unit = Vec::new();
 
         std::mem::swap(&mut nal_unit, &mut ctx.user_context.current_nal_unit);
-        ctx.user_context.nal_units.push(BytesMut::from(&nal_unit[..]));
+        ctx.user_context
+            .nal_units
+            .push(BytesMut::from(&nal_unit[..]));
     }
 }
 
@@ -180,8 +205,8 @@ impl BitstreamFramerFilter {
     pub fn new(
         logger: ContextLogger,
         target_framing: BitstreamFraming,
-        target: Box<dyn FrameWriteFilter + Send + Unpin>) -> Self
-    {
+        target: Box<dyn FrameWriteFilter + Send + Unpin>,
+    ) -> Self {
         Self {
             logger,
             streams: Vec::new(),
@@ -198,12 +223,20 @@ impl FrameWriteFilter for BitstreamFramerFilter {
         for stream in &mut streams {
             if let Some(bitstream_format) = stream.bitstream_format() {
                 if bitstream_format != self.target_framing {
-                    debug!(self.logger, "Converting from {:?} to {:?}", bitstream_format, self.target_framing);
+                    debug!(
+                        self.logger,
+                        "Converting from {:?} to {:?}", bitstream_format, self.target_framing
+                    );
 
                     stream.set_bitstream_format(self.target_framing);
 
-                    debug!(self.logger, "Converted after {:?}", stream.bitstream_format());
-                    self.stream_target_framings.push((stream.id, bitstream_format));
+                    debug!(
+                        self.logger,
+                        "Converted after {:?}",
+                        stream.bitstream_format()
+                    );
+                    self.stream_target_framings
+                        .push((stream.id, bitstream_format));
                 }
             }
         }
@@ -216,12 +249,18 @@ impl FrameWriteFilter for BitstreamFramerFilter {
     }
 
     async fn write(&mut self, mut frame: Frame) -> anyhow::Result<()> {
-        if let Some(&(_, source_format)) = self.stream_target_framings.iter().find(|(id,_)| *id == frame.stream.id) {
-            frame.buffer = convert_bitstream(
-                frame.buffer,
-                source_format,
-                self.target_framing);
-            frame.stream = self.streams.iter().find(|s| s.id == frame.stream.id).unwrap().clone();
+        if let Some(&(_, source_format)) = self
+            .stream_target_framings
+            .iter()
+            .find(|(id, _)| *id == frame.stream.id)
+        {
+            frame.buffer = convert_bitstream(frame.buffer, source_format, self.target_framing);
+            frame.stream = self
+                .streams
+                .iter()
+                .find(|s| s.id == frame.stream.id)
+                .unwrap()
+                .clone();
         }
 
         self.target.write(frame).await?;

@@ -2,18 +2,18 @@ use async_channel::{Receiver, Sender};
 
 use tokio::fs::File;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::collections::HashMap;
 
 use bytes::Bytes;
 
 use crate::ContextLogger;
 
-use super::{Frame, Stream, FrameWriteFilter, FrameReadFilter};
+use super::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
 
-use slog::{info, debug};
+use slog::{debug, info};
 
 /// A queue which broadcasts [`Frame`] to multiple readers.
 #[derive(Clone)]
@@ -55,10 +55,16 @@ impl MediaFrameQueue {
 
             match result {
                 TrySendError::Full(_) => {
-                    debug!(self.logger, "Closing frame queue target due to channel overflow")
+                    debug!(
+                        self.logger,
+                        "Closing frame queue target due to channel overflow"
+                    )
                 }
                 TrySendError::Closed(_) => {
-                    debug!(self.logger, "Closing frame queue target due to channel disconnection.")
+                    debug!(
+                        self.logger,
+                        "Closing frame queue target due to channel disconnection."
+                    )
                 }
             }
 

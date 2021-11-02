@@ -10,6 +10,13 @@ use futures_util::{StreamExt, TryStreamExt};
 
 use mpeg2ts_reader::{demultiplex, packet, packet_filter_switch, pes, psi, StreamType};
 
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        BodyStream, Extension, Path,
+    },
+    response::IntoResponse,
+};
 use h264_reader::{
     annexb::{AnnexBReader, NalReader},
     nal::{
@@ -20,22 +27,13 @@ use h264_reader::{
     rbsp::decode_nal,
     Context,
 };
-use axum::{
-    extract::{
-        ws::{WebSocket, Message, WebSocketUpgrade},
-        Extension,
-        Path,
-        BodyStream,
-    },
-    response::{IntoResponse},
-};
 
 use async_channel::{Receiver, Sender};
-use bytes::{BytesMut, BufMut, Buf, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::media::*;
 
-use crate::{ContextLogger, StreamRepository, AppData};
+use crate::{AppData, ContextLogger, StreamRepository};
 
 use slog::{debug, error};
 
@@ -93,7 +91,6 @@ pub async fn start_mpegts_stream(
     stream: BodyStream,
     stream_repo: &Arc<RwLock<StreamRepository>>,
 ) -> anyhow::Result<()> {
-
     let queue = MediaFrameQueue::new(logger.clone());
     let read_filter = BodyStreamFilter::new(stream);
     let mpegts_filter = MpegTsReadFilter::new(Box::new(read_filter));
@@ -102,7 +99,11 @@ pub async fn start_mpegts_stream(
 
     let mut graph = FilterGraph::new(Box::new(mpegts_analyzer), Box::new(queue.clone()));
 
-    stream_repo.write().unwrap().streams.insert(sid.clone(), queue);
+    stream_repo
+        .write()
+        .unwrap()
+        .streams
+        .insert(sid.clone(), queue);
 
     let result = graph.run().await;
 
@@ -132,7 +133,13 @@ impl MpegTsReadFilter {
     pub fn new(read_filter: Box<dyn ByteReadFilter + Send + Sync + Unpin>) -> Self {
         let mut ctx = DumpDemuxContext::new();
         let mut demux = demultiplex::Demultiplex::new(&mut ctx);
-        Self { ctx, demux, stream: None, queue: VecDeque::new(), read_filter, }
+        Self {
+            ctx,
+            demux,
+            stream: None,
+            queue: VecDeque::new(),
+            read_filter,
+        }
     }
 
     async fn read_packet(&mut self) -> anyhow::Result<MpegTsPacket> {
@@ -154,8 +161,6 @@ impl FrameReadFilter for MpegTsReadFilter {
         self.read_filter.start().await?;
 
         let packet = self.read_packet().await?;
-
-
 
         let parameter_sets = find_parameter_sets(&packet.payload);
         dbg!(&parameter_sets);
@@ -209,7 +214,6 @@ impl FrameReadFilter for MpegTsReadFilter {
         })
     }
 }
-
 
 fn find_idr_nuts(bytes: &[u8]) -> (bool, bool) {
     let mut s = NalSwitch::default();

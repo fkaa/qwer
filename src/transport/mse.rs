@@ -1,15 +1,14 @@
-use crate::mp4;//::{FragmentedMp4WriteFilter, Mp4Metadata, Mp4Segment};
 use crate::media::*;
+use crate::mp4; //::{FragmentedMp4WriteFilter, Mp4Metadata, Mp4Segment};
 
-use futures::{StreamExt, SinkExt, stream::SplitSink};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Extension,
-        Path,
+        Extension, Path,
     },
     response::IntoResponse,
 };
+use futures::{stream::SplitSink, SinkExt, StreamExt};
 
 use bytes::{BufMut, BytesMut};
 
@@ -80,16 +79,20 @@ async fn handle_websocket_video_response(
     logger: ContextLogger,
     socket: WebSocket,
     stream: String,
-    data: Arc<AppData>)
-{
-    let queue_receiver = data.stream_repo.read().unwrap().streams.get(&stream).map(|s| s.get_receiver());
+    data: Arc<AppData>,
+) {
+    let queue_receiver = data
+        .stream_repo
+        .read()
+        .unwrap()
+        .streams
+        .get(&stream)
+        .map(|s| s.get_receiver());
 
     if let Some(mut queue_receiver) = queue_receiver {
         debug!(logger, "Found a stream at {}", stream);
 
-
-        if let Err(e) = start_websocket_filters(&logger, socket, &mut queue_receiver).await
-        {
+        if let Err(e) = start_websocket_filters(&logger, socket, &mut queue_receiver).await {
             error!(logger, "{}", e);
         }
     } else {
@@ -100,10 +103,11 @@ async fn handle_websocket_video_response(
 pub async fn start_websocket_filters(
     logger: &ContextLogger,
     socket: WebSocket,
-    read: &mut (dyn FrameReadFilter + Unpin + Send)) -> anyhow::Result<()>
-{
+    read: &mut (dyn FrameReadFilter + Unpin + Send),
+) -> anyhow::Result<()> {
     let streams = read.start().await?;
-    let (profile, constraints, level) = get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
+    let (profile, constraints, level) =
+        get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
 
     let mut framed = BytesMut::with_capacity(4);
     framed.put_u8(profile);

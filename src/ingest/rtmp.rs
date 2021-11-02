@@ -1,10 +1,11 @@
 use crate::{
-    AudioCodecInfo, ByteReadFilter, CodecInfo, CodecTypeInfo, Fraction, Frame, FrameDependency,
-    FrameReadFilter, MediaTime, SoundType, Stream, VideoCodecInfo,
-    VideoCodecSpecificInfo, MediaFrameQueue, FrameAnalyzerFilter, FilterGraph, ByteWriteFilter2,
-    BitstreamFraming,
+    AudioCodecInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
+    FilterGraph, Fraction, Frame, FrameAnalyzerFilter, FrameDependency, FrameReadFilter,
+    MediaFrameQueue, MediaTime, SoundType, Stream, VideoCodecInfo, VideoCodecSpecificInfo,
 };
 
+use crate::logger::*;
+use crate::StreamRepository;
 use bytes::Bytes;
 use failure::Fail;
 use fmp4::AvcDecoderConfigurationRecord;
@@ -13,7 +14,7 @@ use futures::{
     SinkExt,
 };
 use h264_reader::{
-    annexb::{AnnexBReader},
+    annexb::AnnexBReader,
     nal::{
         pps::{PicParameterSet, PpsError},
         sps::{SeqParameterSet, SpsError},
@@ -22,8 +23,6 @@ use h264_reader::{
     rbsp::decode_nal,
     Context,
 };
-use crate::logger::*;
-use crate::StreamRepository;
 
 use slog::{debug, info, warn};
 
@@ -32,12 +31,20 @@ use tokio::net::{tcp, TcpListener, TcpStream};
 use rml_rtmp::{
     chunk_io::Packet,
     handshake::{Handshake, HandshakeProcessResult, PeerType},
-    sessions::{ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult, StreamMetadata},
+    sessions::{
+        ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult, StreamMetadata,
+    },
     time::RtmpTimestamp,
 };
 use stop_token::StopSource;
 
-use std::{cell::RefCell, collections::VecDeque, io::{self, Cursor}, sync::{Arc, RwLock}, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    io::{self, Cursor},
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 const RTMP_TIMEBASE: Fraction = Fraction::new(1, 1000);
 
@@ -103,7 +110,10 @@ impl RtmpReadFilter {
                     debug!(write_task_logger, "RTMP write task finished without errors");
                 }
                 Err(e) => {
-                    warn!(write_task_logger, "RTMP write task finished with error: {}", e);
+                    warn!(
+                        write_task_logger,
+                        "RTMP write task finished with error: {}", e
+                    );
                 }
             }
         }));
@@ -182,11 +192,6 @@ impl RtmpReadFilter {
             timebase: RTMP_TIMEBASE.clone(),
         };
 
-
-            // let nals = crate::parse_bitstream(Bytes::from(video_packet.avc_data.to_vec()), crate::BitstreamFraming::FourByteLength);
-
-            // info!(self.logger, "RTMP ours: {}", nals.iter().map(|n| format!("{:?}({})", crate::nut_header(n), n.len())).collect::<Vec<_>>().join(","));
-
         let frame = Frame {
             time,
             dependency: if video_tag.header.frame_type == flvparse::FrameType::Key {
@@ -256,20 +261,16 @@ impl RtmpReadFilter {
             {
                 match res {
                     ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
-                    ServerSessionResult::RaisedEvent(evt) => {
-                        // dbg!(&evt);
-
-                        match evt {
-                            ServerSessionEvent::StreamMetadataChanged {
-                                app_name: _,
-                                stream_key: _,
-                                metadata,
-                            } => {
-                                return Ok(metadata);
-                            }
-                            _ => {}
+                    ServerSessionResult::RaisedEvent(evt) => match evt {
+                        ServerSessionEvent::StreamMetadataChanged {
+                            app_name: _,
+                            stream_key: _,
+                            metadata,
+                        } => {
+                            return Ok(metadata);
                         }
-                    }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
@@ -366,18 +367,12 @@ impl FrameReadFilter for RtmpReadFilter {
             debug!(self.logger, "Audio: {:?}", audio);
         }
 
-        let streams =
-            [
-                self.video_stream.clone(),
-                self.audio_stream.clone()
-            ];
+        let streams = [self.video_stream.clone(), self.audio_stream.clone()];
 
-        Ok(
-            std::array::IntoIter::new(streams)
-                .into_iter()
-                .filter_map(|x| x)
-                .collect()
-        )
+        Ok(std::array::IntoIter::new(streams)
+            .into_iter()
+            .filter_map(|x| x)
+            .collect())
     }
 
     async fn read(&mut self) -> anyhow::Result<Frame> {
@@ -679,7 +674,12 @@ async fn handle_tcp_socket(
     let filter_logger = logger.scope();
 
     let queue = MediaFrameQueue::new(filter_logger.clone());
-    let rtmp_filter = RtmpReadFilter::new(filter_logger.clone(), read_filter, write_filter, server_session);
+    let rtmp_filter = RtmpReadFilter::new(
+        filter_logger.clone(),
+        read_filter,
+        write_filter,
+        server_session,
+    );
     let rtmp_analyzer = FrameAnalyzerFilter::read(filter_logger.clone(), Box::new(rtmp_filter));
 
     //let file = tokio::fs::File::create("test.fmp4").await.unwrap();
@@ -687,7 +687,11 @@ async fn handle_tcp_socket(
     //let mut graph = FilterGraph::new(Box::new(rtmp_filter), Box::new(mp4_writer));
     let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
 
-    stream_repo.write().unwrap().streams.insert(sid.clone(), queue);
+    stream_repo
+        .write()
+        .unwrap()
+        .streams
+        .insert(sid.clone(), queue);
 
     let result = graph.run().await;
 
@@ -697,20 +701,18 @@ async fn handle_tcp_socket(
 }
 
 async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
-    std::env::var("STREAM_KEY").map(|key| key == supplied_stream_key).unwrap_or(true)
+    std::env::var("STREAM_KEY")
+        .map(|key| key == supplied_stream_key)
+        .unwrap_or(true)
 }
 
 pub fn listen(
     logger: ContextLogger,
     stream_repo: Arc<RwLock<StreamRepository>>,
-    rtmp_addr: String)
-{
+    rtmp_addr: String,
+) {
     let fut = async move {
-        info!(
-            logger,
-            "Listening for RTMP connections at {}",
-            rtmp_addr
-        );
+        info!(logger, "Listening for RTMP connections at {}", rtmp_addr);
 
         let listener = TcpListener::bind(rtmp_addr).await.unwrap();
 
@@ -721,7 +723,11 @@ pub fn listen(
             let stream_repo = stream_repo.clone();
             let logger = logger.scope();
             tokio::spawn(async move {
-                info!(logger, "Establishing RTMP connection from {:?}", socket.peer_addr());
+                info!(
+                    logger,
+                    "Establishing RTMP connection from {:?}",
+                    socket.peer_addr()
+                );
 
                 match handle_tcp_socket(&logger, socket, stream_repo).await {
                     Ok(_) => info!(logger, "Finished streaming from RTMP"),
@@ -734,10 +740,7 @@ pub fn listen(
     tokio::spawn(fut);
 }
 
-fn create_tcp_filters(
-    socket: TcpStream,
-    buffer: usize) -> (TcpReadFilter, TcpWriteFilter)
-{
+fn create_tcp_filters(socket: TcpStream, buffer: usize) -> (TcpReadFilter, TcpWriteFilter) {
     let (read, write) = socket.into_split();
 
     (TcpReadFilter::new(read, buffer), TcpWriteFilter::new(write))

@@ -78,7 +78,6 @@ impl FragmentedMp4WriteFilter {
         let media_duration = frame.time.clone() - self.prev_time.clone().unwrap();
         let base_offset = self.prev_time.clone().unwrap() - self.start_time.clone().unwrap();
 
-
         let duration = if media_duration.duration == 0 {
             1800
         } else {
@@ -157,7 +156,8 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
         self.target.start().await?;
 
         // TODO: handle audio streams
-        self.write_preamble(streams.iter().find(|s| s.is_video()).unwrap()).await?;
+        self.write_preamble(streams.iter().find(|s| s.is_video()).unwrap())
+            .await?;
 
         Ok(())
     }

@@ -2,26 +2,26 @@ use async_channel::{Receiver, Sender};
 
 use tokio::fs::File;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::collections::HashMap;
 
 use bytes::Bytes;
 
 use crate::ContextLogger;
 
-use slog::{info, debug};
+use slog::{debug, info};
 
-mod media_frame_queue;
-mod frame_analyzer;
-mod wait_for_sync_frame;
 mod bitstream_framer;
+mod frame_analyzer;
+mod media_frame_queue;
+mod wait_for_sync_frame;
 
-pub use media_frame_queue::*;
-pub use frame_analyzer::*;
-pub use wait_for_sync_frame::*;
 pub use bitstream_framer::*;
+pub use frame_analyzer::*;
+pub use media_frame_queue::*;
+pub use wait_for_sync_frame::*;
 
 #[derive(Copy, Clone)]
 pub struct Fraction {
@@ -73,16 +73,17 @@ pub enum BitstreamFraming {
 
     // /// NAL units are prefixed with a 3 byte start code '00 00 01'.
     // ThreeByteStartCode,
-
     /// NAL units are prefixed with a 4 byte start code '00 00 00 01'.
     FourByteStartCode,
 }
 
 impl BitstreamFraming {
     pub fn is_start_code(&self) -> bool {
-        matches!(self,
-                 //BitstreamFraming::ThreeByteStartCode |
-                 BitstreamFraming::FourByteStartCode)
+        matches!(
+            self,
+            //BitstreamFraming::ThreeByteStartCode |
+            BitstreamFraming::FourByteStartCode
+        )
     }
 }
 
@@ -221,39 +222,54 @@ pub struct Stream {
 
 impl Stream {
     /*pub fn with_bitstream_format(&self) -> Stream {
-        let codec = if let CodecTypeInfo::Video(VideoCodecInfo { extra: VideoCodecSpecificInfo::H264 { mut bitstream_format, .. }, .. }) = &self.codec.properties {
-            let new_codec = (*self.codec).clone();
+            let codec = if let CodecTypeInfo::Video(VideoCodecInfo { extra: VideoCodecSpecificInfo::H264 { mut bitstream_format, .. }, .. }) = &self.codec.properties {
+                let new_codec = (*self.codec).clone();
 
-            Arc::new(new_codec)
-        } else {
-            self.codec.clone()
-        };
+                Arc::new(new_codec)
+            } else {
+                self.codec.clone()
+            };
 
-        Stream {
-            id: self.id,
-            codec,
-            timebase: self.timebase,
-        }
-}*/
+            Stream {
+                id: self.id,
+                codec,
+                timebase: self.timebase,
+            }
+    }*/
     pub fn parameter_sets(&self) -> Vec<&[u8]> {
-        if let CodecTypeInfo::Video(VideoCodecInfo { extra: VideoCodecSpecificInfo::H264 { sps, pps, .. }, .. }) = &self.codec.properties {
-            vec![
-                &sps[..],
-                &pps[..],
-            ]
+        if let CodecTypeInfo::Video(VideoCodecInfo {
+            extra: VideoCodecSpecificInfo::H264 { sps, pps, .. },
+            ..
+        }) = &self.codec.properties
+        {
+            vec![&sps[..], &pps[..]]
         } else {
             vec![]
         }
     }
 
     pub fn set_bitstream_format(&mut self, format: BitstreamFraming) {
-        if let CodecTypeInfo::Video(VideoCodecInfo { extra: VideoCodecSpecificInfo::H264 { ref mut bitstream_format, .. }, .. }) = Arc::make_mut(&mut self.codec).properties {
+        if let CodecTypeInfo::Video(VideoCodecInfo {
+            extra:
+                VideoCodecSpecificInfo::H264 {
+                    ref mut bitstream_format,
+                    ..
+                },
+            ..
+        }) = Arc::make_mut(&mut self.codec).properties
+        {
             *bitstream_format = format;
         }
     }
 
     pub fn bitstream_format(&self) -> Option<BitstreamFraming> {
-        if let CodecTypeInfo::Video(VideoCodecInfo { extra: VideoCodecSpecificInfo::H264 { bitstream_format, .. }, .. }) = self.codec.properties {
+        if let CodecTypeInfo::Video(VideoCodecInfo {
+            extra: VideoCodecSpecificInfo::H264 {
+                bitstream_format, ..
+            },
+            ..
+        }) = self.codec.properties
+        {
             Some(bitstream_format)
         } else {
             None

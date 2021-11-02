@@ -1,15 +1,8 @@
-use std::sync::{RwLock, Arc};
+use std::sync::{Arc, RwLock};
 
-use slog::{
-    o,
-    Record,
-    OwnedKVList,
-    Drain
-};
+use slog::{o, Drain, OwnedKVList, Record};
 
-use slog_term::{
-    Decorator
-};
+use slog_term::Decorator;
 
 pub(crate) fn initialize() -> (slog::Logger, ContextLogger) {
     let decorator = slog_term::TermDecorator::new().build();
@@ -50,14 +43,19 @@ fn log_msg_header(
     rd.start_timestamp()?;
     fn_timestamp(&mut rd)?;
 
-
     rd.start_whitespace()?;
     write!(rd, " ")?;
 
     {
         use slog::KV;
 
-        values.serialize(record, &mut ContextSerializer { decorator: rd, done: false })?;
+        values.serialize(
+            record,
+            &mut ContextSerializer {
+                decorator: rd,
+                done: false,
+            },
+        )?;
     }
 
     rd.start_whitespace()?;
@@ -94,19 +92,10 @@ impl<D: Decorator> Drain for MyFormat<D> {
     type Ok = ();
     type Err = std::io::Error;
 
-    fn log(
-        &self,
-        record: &Record,
-        values: &OwnedKVList,
-    ) -> Result<Self::Ok, Self::Err> {
+    fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         self.decorator.with_record(record, values, |decorator| {
-            let _comma_needed = log_msg_header(
-                &slog_term::timestamp_local,
-                decorator,
-                record,
-                values,
-                true,
-            )?;
+            let _comma_needed =
+                log_msg_header(&slog_term::timestamp_local, decorator, record, values, true)?;
 
             {
                 /* let mut serializer = Serializer::new(
@@ -131,7 +120,6 @@ impl<D: Decorator> Drain for MyFormat<D> {
         })
     }
 }
-
 
 #[derive(Clone)]
 pub struct ContextLogger {

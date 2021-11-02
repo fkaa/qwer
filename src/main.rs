@@ -1,33 +1,32 @@
 use axum::{
-    Router,
-    response::{Html},
     handler::{get, post},
-    AddExtensionLayer,
+    response::Html,
+    AddExtensionLayer, Router,
 };
 
-use slog::{info};
+use slog::info;
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+mod logger;
 mod media;
 mod mp4;
-mod logger;
 mod webrtc;
 
 mod transport {
-    pub mod webrtc;
-    pub mod mse;
     pub mod http;
+    pub mod mse;
+    pub mod webrtc;
 }
 
 mod ingest {
-    pub mod rtmp;
     pub mod mpegts;
+    pub mod rtmp;
 }
 
-use media::*;
 use logger::*;
+use media::*;
 
 #[derive(Default)]
 pub struct StreamRepository {
@@ -51,13 +50,25 @@ async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyh
 
     let web_logger = logger.scope();
     info!(web_logger, "Starting webserver at {}", web_addr);
-    let data = AppData { stream_repo, logger: web_logger, };
+    let data = AppData {
+        stream_repo,
+        logger: web_logger,
+    };
 
     let app = Router::new()
         .route("/", get(handler))
-        .route("/ingest/mpegts/:stream", post(ingest::mpegts::mpegts_ingest))
-        .route("/transport/webrtc/:stream", get(transport::webrtc::websocket_webrtc_signalling))
-        .route("/transport/mse/:stream", get(transport::mse::websocket_video))
+        .route(
+            "/ingest/mpegts/:stream",
+            post(ingest::mpegts::mpegts_ingest),
+        )
+        .route(
+            "/transport/webrtc/:stream",
+            get(transport::webrtc::websocket_webrtc_signalling),
+        )
+        .route(
+            "/transport/mse/:stream",
+            get(transport::mse::websocket_video),
+        )
         .route("/transport/http/:stream", get(transport::http::http_video))
         .layer(AddExtensionLayer::new(Arc::new(data)));
 
@@ -75,7 +86,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing_subscriber::fmt::init();
     let _ = dotenv::dotenv();
 
-
     let web_addr =
         std::env::var("WEB_BIND_ADDRESS").unwrap_or_else(|_| String::from("0.0.0.0:8080"));
     let rtmp_addr =
@@ -85,9 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async {
-            start(logger, &web_addr, rtmp_addr).await
-        })?;
+        .block_on(async { start(logger, &web_addr, rtmp_addr).await })?;
 
     Ok(())
 }

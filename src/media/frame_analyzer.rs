@@ -1,19 +1,11 @@
-use async_channel::{Receiver, Sender};
-
-use tokio::fs::File;
-
-use std::fmt;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use std::collections::HashMap;
-
-use bytes::Bytes;
+use std::time::Instant;
 
 use crate::ContextLogger;
 
-use super::{MediaTime, Frame, Stream, FrameWriteFilter, FrameReadFilter};
+use super::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
 
-use slog::{info, debug};
+use slog::{debug, info, trace};
 
 enum ReadOrWriteFilter {
     Read(Box<dyn FrameReadFilter + Send + Unpin>),
@@ -90,7 +82,6 @@ impl StreamMetrics {
                 fps: 1.0 / fps,
                 bitrate,
             })
-
         } else {
             None
         }
@@ -126,10 +117,28 @@ impl FrameAnalyzerFilter {
     fn report(&mut self, frame: &Frame) {
         let stream_id = frame.stream.id;
 
-        if let Some(report) = self.metrics.entry(stream_id).or_insert(StreamMetrics::new()).add(&frame) {
-            if let Some(stream) = self.streams.iter().find(|s| s.id == stream_id) {
-                let action = if matches!(self.filter, ReadOrWriteFilter::Read(_)) { "reading" } else { "writing" };
-                info!(self.logger, "Metrics for {} stream #{} fps: {}, std-dev: {:.3} ms, bitrate: {}/s", action, stream_id, report.fps, report.std_dev, bytesize::ByteSize(report.bitrate))
+        if let Some(report) = self
+            .metrics
+            .entry(stream_id)
+            .or_insert(StreamMetrics::new())
+            .add(&frame)
+        {
+            if self.streams.iter().find(|s| s.id == stream_id).is_some() {
+                let action = if matches!(self.filter, ReadOrWriteFilter::Read(_)) {
+                    "reading"
+                } else {
+                    "writing"
+                };
+
+                trace!(
+                    self.logger,
+                    "Metrics for {} stream #{} fps: {}, std-dev: {:.3} ms, bitrate: {}/s",
+                    action,
+                    stream_id,
+                    report.fps,
+                    report.std_dev,
+                    bytesize::ByteSize(report.bitrate)
+                )
             }
         }
     }
