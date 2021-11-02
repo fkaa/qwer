@@ -61,7 +61,8 @@ async fn start(logger: ContextLogger, web_addr: &str, rtmp_addr: String) -> anyh
         .route("/transport/http/:stream", get(transport::http::http_video))
         .layer(AddExtensionLayer::new(Arc::new(data)));
 
-    axum::Server::bind(&web_addr.parse()?)
+    hyper::Server::bind(&web_addr.parse()?)
+        .tcp_nodelay(true)
         .serve(app.into_make_service())
         .await
         .unwrap();
