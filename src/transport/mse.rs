@@ -38,6 +38,7 @@ impl ByteWriteFilter2 for WebSocketWriteFilter {
 
     async fn write(&mut self, bytes: bytes::Bytes) -> anyhow::Result<()> {
         self.sink.send(Message::Binary(bytes.to_vec())).await?;
+        self.sink.flush().await?;
 
         Ok(())
     }
