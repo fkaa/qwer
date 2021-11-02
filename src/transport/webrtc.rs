@@ -11,22 +11,18 @@ use webrtc::{
     peer::{
         configuration::RTCConfiguration,
         ice::{
-            ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
+            ice_candidate::{RTCIceCandidateInit},
             ice_connection_state::RTCIceConnectionState,
             ice_server::RTCIceServer,
         },
         peer_connection::RTCPeerConnection,
-        peer_connection_state::RTCPeerConnectionState,
         sdp::session_description::RTCSessionDescription,
     },
 };
 use webrtc_media::{io::h264_reader::H264Reader, Sample};
 
 use interceptor::registry::Registry;
-use sdp::description::{
-    media::MediaDescription,
-    session::{Origin, SessionDescription},
-};
+
 
 use axum::{
     extract::{
@@ -39,13 +35,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use slog::{debug, error, info};
+use slog::{debug, error};
 
 use serde::{Deserialize, Serialize};
 
 use crate::media::{
-    is_video_nal_unit, nut_header, parse_bitstream, BitstreamFramerFilter, BitstreamFraming,
-    MediaFrameQueue, WaitForSyncFrameFilter,
+    is_video_nal_unit, parse_bitstream, BitstreamFramerFilter, BitstreamFraming, WaitForSyncFrameFilter,
 };
 use crate::{
     media::{CodecTypeInfo, Stream},
@@ -80,7 +75,7 @@ impl WebRtcWriteFilter {
 fn parse_nals_webrtc_(bitstream: &Bytes) -> Vec<Bytes> {
     use std::io::{BufReader, Cursor};
 
-    let mut cursor = Cursor::new(&bitstream[..]);
+    let cursor = Cursor::new(&bitstream[..]);
     let reader = BufReader::new(cursor);
     let mut h264 = H264Reader::new(reader);
 
@@ -167,7 +162,7 @@ pub enum SignalingMessage {
 
 fn get_codec_capabilities_from_stream(stream: Stream) -> TrackLocalStaticSample {
     match &stream.codec.properties {
-        CodecTypeInfo::Video(video) => TrackLocalStaticSample::new(
+        CodecTypeInfo::Video(_video) => TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_H264.to_string(),
                 clock_rate: stream.timebase.decimal() as u32,
@@ -176,7 +171,7 @@ fn get_codec_capabilities_from_stream(stream: Stream) -> TrackLocalStaticSample 
             String::from("video"),
             String::from("streamhead"),
         ),
-        CodecTypeInfo::Audio(audio) => TrackLocalStaticSample::new(
+        CodecTypeInfo::Audio(_audio) => TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_OPUS.to_string(),
                 clock_rate: stream.timebase.decimal() as u32,
@@ -226,7 +221,7 @@ async fn handle_websocket_video_response(
         repo.streams.get(&stream).cloned()
     };
 
-    if let Some(mut frame_queue) = frame_queue {
+    if let Some(frame_queue) = frame_queue {
         let config = RTCConfiguration {
             ice_servers: vec![RTCIceServer {
                 urls: vec!["stun:stun.l.google.com:19302".to_owned()],
@@ -287,7 +282,7 @@ async fn handle_websocket_video_response(
         peer_connection
             .on_ice_candidate(Box::new(move |candidate| {
                 let ice_tx = ice_tx.clone();
-                let logger = blogger.clone();
+                let _logger = blogger.clone();
 
                 Box::pin(async move {
                     ice_tx.send(candidate).await.unwrap();
@@ -350,7 +345,7 @@ async fn handle_websocket_video_response(
                 write_filter,
             ));
             //let framer = Box::new(BitstreamFramerFilter::new(logger.clone(), BitstreamFraming::TwoByteLength, write_filter));
-            let mut write_filter =
+            let write_filter =
                 Box::new(WaitForSyncFrameFilter::new(blogger.clone(), write_filter));
 
             let queue_receiver = frame_queue.get_receiver();

@@ -5,7 +5,7 @@ use crate::ContextLogger;
 
 use super::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
 
-use slog::{debug, info, trace};
+use slog::{trace};
 
 enum ReadOrWriteFilter {
     Read(Box<dyn FrameReadFilter + Send + Unpin>),

@@ -6,13 +6,12 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use byteorder::{BigEndian, ByteOrder};
-use futures_util::{StreamExt, TryStreamExt};
+use futures_util::{StreamExt};
 
 use mpeg2ts_reader::{demultiplex, packet, packet_filter_switch, pes, psi, StreamType};
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         BodyStream, Extension, Path,
     },
     response::IntoResponse,
@@ -28,8 +27,8 @@ use h264_reader::{
     Context,
 };
 
-use async_channel::{Receiver, Sender};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+
+use bytes::{Bytes, BytesMut};
 
 use crate::media::*;
 
@@ -132,7 +131,7 @@ pub struct MpegTsReadFilter {
 impl MpegTsReadFilter {
     pub fn new(read_filter: Box<dyn ByteReadFilter + Send + Sync + Unpin>) -> Self {
         let mut ctx = DumpDemuxContext::new();
-        let mut demux = demultiplex::Demultiplex::new(&mut ctx);
+        let demux = demultiplex::Demultiplex::new(&mut ctx);
         Self {
             ctx,
             demux,

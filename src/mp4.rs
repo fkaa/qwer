@@ -189,7 +189,7 @@ fn get_sample_entry_for_codec_type(codec: &CodecTypeInfo) -> SampleEntry {
     match codec {
         CodecTypeInfo::Video(video) => {
             if let VideoCodecSpecificInfo::H264 {
-                bitstream_format,
+                bitstream_format: _,
                 profile_indication,
                 profile_compatibility,
                 level_indication,

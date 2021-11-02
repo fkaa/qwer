@@ -1,31 +1,28 @@
-use async_channel::{Receiver, Sender};
 
-use tokio::fs::File;
 
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+
+
+
+
+
+
 
 use h264_reader::{
     annexb::{AnnexBReader, NalReader},
     nal::{
-        pps::{PicParameterSet, PpsError},
-        sps::{SeqParameterSet, SpsError},
-        GenericNalSwitch, NalHandler, NalHeader, NalSwitch, UnitType,
+        GenericNalSwitch, NalHandler, NalHeader, UnitType,
     },
-    rbsp::decode_nal,
     Context,
 };
 
-use byteorder::{BigEndian, ByteOrder};
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::ContextLogger;
 
-use super::{BitstreamFraming, Frame, FrameDependency, FrameReadFilter, FrameWriteFilter, Stream};
+use super::{BitstreamFraming, Frame, FrameReadFilter, FrameWriteFilter, Stream};
 
-use slog::{debug, info};
+use slog::{debug};
 
 const THREE_BYTE_STARTCODE: [u8; 3] = [0, 0, 1];
 const FOUR_BYTE_STARTCODE: [u8; 4] = [0, 0, 0, 1];
@@ -92,7 +89,7 @@ fn frame_nal_units_with_start_codes(nal_units: Vec<Bytes>, codes: &[u8]) -> Byte
 }
 
 /// Frames NAL units with a length prefix before each NAL.
-fn frame_nal_units_with_length<F: Fn(&mut BufMut, usize)>(
+fn frame_nal_units_with_length<F: Fn(&mut dyn BufMut, usize)>(
     nal_units: Vec<Bytes>,
     write: F,
 ) -> BytesMut {
@@ -124,7 +121,7 @@ pub fn frame_nal_units(nal_units: Vec<Bytes>, target: BitstreamFraming) -> Bytes
 /// Converts a H.26x bitstream from a source [BitstreamFraming] to a
 /// target [BitstreamFraming].
 fn convert_bitstream(
-    mut bitstream: Bytes,
+    bitstream: Bytes,
     source: BitstreamFraming,
     target: BitstreamFraming,
 ) -> Bytes {
@@ -177,7 +174,7 @@ impl NalFramer {
 impl NalHandler for NalFramer {
     type Ctx = NalFramerContext;
 
-    fn start(&mut self, ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
+    fn start(&mut self, _ctx: &mut Context<Self::Ctx>, _header: NalHeader) {}
 
     fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
         ctx.user_context.current_nal_unit.extend(buf);

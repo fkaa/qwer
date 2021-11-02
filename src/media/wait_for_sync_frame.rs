@@ -2,7 +2,7 @@ use crate::ContextLogger;
 
 use super::{Frame, FrameDependency, FrameReadFilter, FrameWriteFilter, Stream};
 
-use slog::{debug, info};
+use slog::{debug};
 
 pub async fn wait_for_sync_frame(
     logger: &ContextLogger,
