@@ -17,7 +17,7 @@ async-trait = "0.1"
 
 bytesize = "1.1"
 e-ring = "0.3"
-slog = "2.7"
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 slog-async = "2.7"
 slog-term = "2.8"
 thiserror = "1.0"
