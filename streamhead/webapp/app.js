@@ -433,13 +433,8 @@ class MseStream {
         this.streamFailed();
     }
 
-    webSocketMessageInit(bytes) {
-        const profile = bytes[0];
-        const constraints = bytes[1];
-        const level = bytes[2];
-
-        // TODO: this should be sent from serverside
-        this.codec = `video/mp4; codecs="avc1.${tohex(profile)}${tohex(constraints)}${tohex(level)}"`;
+    webSocketMessageInit(codecs) {
+        this.codec = `video/mp4; codecs="${codecs}"`;
 
         LOG.debug(`Received codec parameters: ${this.codec}`);
 
@@ -512,14 +507,12 @@ class MseStream {
             return;
         }
 
-        var bytes = new Uint8Array(event.data);
-
-        // this.networkBytes += bytes.length;
-
         if (!this.hasStartedStream) {
             this.hasStartedStream = true;
-            this.webSocketMessageInit(bytes);
+            this.webSocketMessageInit(event.data);
         } else {
+            var bytes = new Uint8Array(event.data);
+            // this.networkBytes += bytes.length;
             this.webSocketSegment(bytes);
         }
     }
@@ -586,8 +579,4 @@ class MseStream {
             }
         }
     }
-}
-
-function tohex(num) {
-    return num.toString(16).padStart(2, "0");
 }

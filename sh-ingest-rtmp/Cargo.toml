@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 sh-media = { path = "../sh-media" }
-fmp4 = { path = "../fmp4" }
+# fmp4 = { path = "../fmp4" }
+av-mp4 = { git = "https://github.com/Jokler/av-mp4", branch = "add-audio" }
+av-format = { git = "https://github.com/rust-av/rust-av" }
 
 async-trait = "0.1"
 anyhow = "1.0"

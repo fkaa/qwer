@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 sh-media = { path = "../sh-media" }
-fmp4 = { path = "../fmp4" }
+av-mp4 = { git = "https://github.com/Jokler/av-mp4", branch = "add-audio" }
+# fmp4 = { path = "../fmp4" }
 async-trait = "0.1"
 bytes = "1.0"
 anyhow = "1.0"

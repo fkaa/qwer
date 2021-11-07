@@ -30,7 +30,10 @@ impl ByteWriteFilter2 for WebSocketWriteFilter {
     }
 }
 
-fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<(u8, u8, u8)> {
+fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<rfc6381_codec::Codec> {
+    use mpeg4_audio_const::AudioObjectType;
+    use rfc6381_codec::{Codec, Mp4a};
+
     if let Some(VideoCodecSpecificInfo::H264 {
         profile_indication,
         profile_compatibility,
@@ -38,13 +41,22 @@ fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<(u8, u8, u8)> {
         ..
     }) = stream.codec.video().map(|v| &v.extra)
     {
-        Ok((
+        Ok(Codec::avc1(
             *profile_indication,
             *profile_compatibility,
             *level_indication,
         ))
+    } else if let Some(audio_specific) = stream
+        .codec
+        .audio()
+        .and_then(|v| v.extra.decoder_specific_data())
+    {
+        let audio_object_type = audio_specific[0] >> 3;
+        Ok(Codec::Mp4a(Mp4a::Mpeg4Audio {
+            audio_object_type: Some(AudioObjectType::try_from(audio_object_type).unwrap()),
+        }))
     } else {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -53,21 +65,20 @@ pub async fn start_websocket_filters(
     read: &mut (dyn FrameReadFilter + Unpin + Send),
 ) -> anyhow::Result<()> {
     let streams = read.start().await?;
-    let (profile, constraints, level) =
+    let video_codec =
         get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
 
-    let mut framed = BytesMut::with_capacity(4);
-    framed.put_u8(profile);
-    framed.put_u8(constraints);
-    framed.put_u8(level);
+    let audio_codec =
+        get_codec_from_stream(streams.iter().find(|s| s.is_audio()).unwrap())?;
 
     let (mut sender, mut receiver) = socket.split();
-    sender.send(Message::Binary(framed.to_vec())).await?;
+    sender.send(Message::Text(format!("{},{}", video_codec, audio_codec))).await?;
 
     // write
     let output_filter = WebSocketWriteFilter::new(sender);
     let fmp4_filter = Box::new(FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(fmp4_filter));
+    //let output_filter = FileWriteFilter::new(tokio::fs::File::create("output.mp4").await.unwrap());
     let mut write = Box::new(BitstreamFramerFilter::new(
         BitstreamFraming::FourByteLength,
         write_analyzer,

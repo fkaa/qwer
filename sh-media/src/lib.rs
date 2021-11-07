@@ -11,12 +11,14 @@ mod bitstream_framer;
 mod frame_analyzer;
 mod media_frame_queue;
 mod wait_for_sync_frame;
+mod file_writer;
 mod tcp;
 
 pub use bitstream_framer::*;
 pub use frame_analyzer::*;
 pub use media_frame_queue::*;
 pub use wait_for_sync_frame::*;
+pub use file_writer::*;
 pub use tcp::*;
 
 #[derive(Copy, Clone)]
@@ -158,6 +160,20 @@ impl fmt::Debug for VideoCodecInfo {
     }
 }
 
+// TODO improve debug formatting
+#[derive(Debug, Clone)]
+pub enum AudioCodecSpecificInfo {
+    Aac { extra: Vec<u8> },
+}
+
+impl AudioCodecSpecificInfo {
+    pub fn decoder_specific_data(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Aac { extra } => Some(extra.clone()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum SoundType {
     Mono,
@@ -169,7 +185,7 @@ pub struct AudioCodecInfo {
     pub sample_rate: u32,
     pub sample_bpp: u32,
     pub sound_type: SoundType,
-    // pub extra: VideoCodecSpecificInfo,
+    pub extra: AudioCodecSpecificInfo,
 }
 
 #[derive(Clone)]
@@ -197,6 +213,14 @@ impl CodecInfo {
     pub fn video(&self) -> Option<&VideoCodecInfo> {
         if let CodecTypeInfo::Video(video) = &self.properties {
             Some(video)
+        } else {
+            None
+        }
+    }
+
+    pub fn audio(&self) -> Option<&AudioCodecInfo> {
+        if let CodecTypeInfo::Audio(audio) = &self.properties {
+            Some(audio)
         } else {
             None
         }
@@ -310,6 +334,7 @@ impl fmt::Debug for Frame {
     }
 }
 
+#[derive(Clone)]
 pub struct MediaDuration {
     pub duration: i64,
     pub timebase: Fraction,

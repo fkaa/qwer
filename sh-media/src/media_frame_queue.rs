@@ -1,6 +1,5 @@
-use std::sync::{Arc, Mutex};
-
 use super::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
+use std::sync::{Arc, Mutex};
 
 /// A queue which broadcasts [`Frame`] to multiple readers.
 #[derive(Clone)]

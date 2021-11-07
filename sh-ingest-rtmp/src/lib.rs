@@ -1,5 +1,7 @@
 use bytes::Bytes;
 use failure::Fail;
+use av_mp4::boxes::codec::avcc::AvcDecoderConfigurationRecord;
+use av_format::buffer::AccReader;
 use h264_reader::{
     annexb::AnnexBReader,
     nal::{
@@ -26,7 +28,7 @@ use tokio::net::TcpListener;
 use tracing::*;
 
 use sh_media::{
-    AudioCodecInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
+    AudioCodecInfo, AudioCodecSpecificInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
     Fraction, Frame, FrameDependency, FrameReadFilter,
     MediaTime, SoundType, Stream, VideoCodecInfo, VideoCodecSpecificInfo, TcpReadFilter, TcpWriteFilter, split_tcp_filters,
 };
@@ -307,7 +309,7 @@ impl RtmpReadFilter {
             time,
             dependency: FrameDependency::None,
 
-            buffer: data,
+            buffer: Bytes::from(audio_tag.body.data[1..].to_vec()),
             stream: self.audio_stream.clone().unwrap(),
             received: Instant::now(),
         };
@@ -474,17 +476,17 @@ fn get_codec_from_nalu(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Code
 }
 
 fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<CodecInfo> {
-    let mut reader = Cursor::new(packet.avc_data);
-    let record = fmp4::AvcDecoderConfigurationRecord::read(&mut reader)?;
+    let cursor = Cursor::new(packet.avc_data);
+    let mut reader = AccReader::new(cursor);
+    let mut record = AvcDecoderConfigurationRecord::read(&mut reader)?;
 
     /*error!(
         "get_codec_from_mp4 SPS: {}",
         base64::encode(&record.sequence_parameter_set)
     );*/
-    let sps = SeqParameterSet::from_bytes(&decode_nal(&record.sequence_parameter_set[1..]))
+    // FIXME Always uses first set
+    let sps = SeqParameterSet::from_bytes(&decode_nal(&record.sequence_parameter_sets[0].0[1..]))
         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-    //dbg!(&sps);
 
     let (width, height) = sps.pixel_dimensions().unwrap();
 
@@ -498,8 +500,9 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
                 profile_indication: record.profile_indication,
                 profile_compatibility: record.profile_compatibility,
                 level_indication: record.level_indication,
-                sps: Arc::new(record.sequence_parameter_set),
-                pps: Arc::new(record.picture_parameter_set),
+                // FIXME Always uses first set
+                sps: Arc::new(record.sequence_parameter_sets.remove(0).0),
+                pps: Arc::new(record.picture_parameter_sets.remove(0).0),
             },
         }),
     })
@@ -577,6 +580,14 @@ fn get_audio_codec_info(tag: &flvparse::AudioTag) -> anyhow::Result<CodecInfo> {
             sound_type: match tag.header.sound_type {
                 flvparse::SoundType::Mono => SoundType::Mono,
                 flvparse::SoundType::Stereo => SoundType::Stereo,
+            },
+            extra: AudioCodecSpecificInfo::Aac {
+                extra: match tag.body.data[0] {
+                    // TODO Maybe this doesn't have to be owned
+                    0 => tag.body.data[1..].to_owned(), // AudioSpecificConfig
+                    1 => unimplemented!("Raw AAC frame data"),
+                    _ => panic!("Unknown AACPacketType"),
+                },
             },
         }),
     })
@@ -703,4 +714,10 @@ async fn process(
             .map_err(|e| RtmpError::ServerSession(e.kind))?;
         r.extend(results);
     }
+}
+
+async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
+    std::env::var("STREAM_KEY")
+        .map(|key| key == supplied_stream_key)
+        .unwrap_or(true)
 }
