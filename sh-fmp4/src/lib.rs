@@ -1,17 +1,59 @@
-use fmp4::*;
+use av_mp4::boxes::{
+    co64::ChunkLargeOffsetBox,
+    codec::{
+        avc1::AvcSampleEntryBox,
+        avcc::{
+            AvcConfigurationBox, AvcDecoderConfigurationRecord, PictureParameterSet,
+            SequenceParameterSet,
+        },
+        esds::{DecoderConfigDescriptor, DecoderSpecificInfo, EsDescriptor, EsdBox},
+        mp4a::Mpeg4AudioSampleEntryBox,
+        stsd::{SampleDescriptionBox, SampleEntry},
+    },
+    dinf::DataInformationBox,
+    dref::DataReferenceBox,
+    ftyp::FileTypeBox,
+    hdlr::HandlerBox,
+    mdat::MediaDataBox,
+    mdhd::MediaHeaderBox,
+    mdia::MediaBox,
+    mehd::MovieExtendsHeaderBox,
+    mfhd::MovieFragmentHeaderBox,
+    minf::{MediaHeader, MediaInformationBox},
+    moof::MovieFragmentBox,
+    moov::MovieBox,
+    mvex::MovieExtendsBox,
+    mvhd::MovieHeaderBox,
+    smhd::SoundMediaHeaderBox,
+    stbl::{ChunkOffsets, SampleTableBox},
+    stsc::SampleToChunkBox,
+    stsz::{SampleSizeBox, SampleSizes},
+    stts::TimeToSampleBox,
+    tfdt::TrackFragmentBaseMediaDecodeTimeBox,
+    tfhd::TrackFragmentHeaderBox,
+    tkhd::{TrackHeaderBox, TrackHeaderFlags},
+    traf::TrackFragmentBox,
+    trak::TrackBox,
+    trex::TrackExtendsBox,
+    trun::{TrackFragmentRunBox, TrackFragmentSample},
+    url::DataEntryUrlBox,
+    vmhd::VideoMediaHeaderBox,
+};
 
 use sh_media::{
     ByteWriteFilter2, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameWriteFilter,
     MediaDuration, MediaTime, Stream, VideoCodecSpecificInfo,
 };
+use std::borrow::Cow;
 use std::time::Instant;
+use std::collections::HashMap;
 
 use tracing::*;
 
 pub struct FragmentedMp4WriteFilter {
     target: Box<dyn ByteWriteFilter2 + Send + Unpin>,
-    start_time: Option<MediaTime>,
-    prev_time: Option<MediaTime>,
+    start_times: HashMap<u32, MediaTime>,
+    prev_times: HashMap<u32, MediaTime>,
     time_scale: Option<Fraction>,
     sequence_id: u32,
 }
@@ -20,57 +62,63 @@ impl FragmentedMp4WriteFilter {
     pub fn new(target: Box<dyn ByteWriteFilter2 + Send + Unpin>) -> Self {
         FragmentedMp4WriteFilter {
             target,
-            start_time: None,
-            prev_time: None,
+            start_times: HashMap::new(),
+            prev_times: HashMap::new(),
             sequence_id: 0,
             time_scale: None,
         }
     }
 
-    async fn write_preamble(&mut self, stream: &Stream) -> anyhow::Result<()> {
-        let ftyp = FileTypeBox::new(
-            FourCC(*b"isom"),
-            0,
-            vec![FourCC(*b"isom"), FourCC(*b"iso5"), FourCC(*b"dash")],
+    async fn write_preamble(
+        &mut self,
+        video: &Stream,
+        audio: Option<&Stream>,
+    ) -> anyhow::Result<()> {
+        let ftyp = FileTypeBox::new(*b"isom", 0, Cow::Owned(vec![*b"isom", *b"iso5", *b"dash"]));
+
+        warn!("Timescale: {:?}", video.timebase);
+
+        let mut tracks = vec![get_track_for_video_stream(video)];
+        if let Some(audio) = audio {
+            tracks.push(get_track_for_audio_stream(audio))
+        }
+
+        let moov = MovieBox::new(
+            MovieHeaderBox::new(video.timebase.denominator, 0),
+            Some(MovieExtendsBox::new(
+                MovieExtendsHeaderBox::new(0),
+                vec![
+                    // one per track
+                    TrackExtendsBox::new(1, 1, 0, 0, 0),
+                    TrackExtendsBox::new(2, 1, 0, 0, 0),
+                ],
+            )),
+            tracks,
         );
 
-        warn!("Timescale: {:?}", stream.timebase);
-
-        let moov = MovieBox {
-            mvhd: MovieHeaderBox {
-                creation_time: 0,
-                modification_time: 0,
-                timescale: stream.timebase.denominator,
-                duration: 0,
-            },
-            mvex: Some(MovieExtendsBox {
-                mehd: MovieExtendsHeaderBox {
-                    fragment_duration: 0,
-                },
-                trex: TrackExtendsBox {
-                    track_id: 1,
-                    default_sample_description_index: 1,
-                    default_sample_duration: 0,
-                    default_sample_size: 0,
-                    default_sample_flags: 0,
-                },
-            }),
-            tracks: vec![get_track_for_stream(stream)],
-        };
-
         let mut bytes = bytes::BytesMut::with_capacity(1024);
+        // FIXME use bytes or vec not both
+        let mut v = Vec::with_capacity(1024);
 
-        ftyp.write(&mut bytes)?;
-        moov.write(&mut bytes)?;
+        ftyp.write(&mut v)?;
+        moov.write(&mut v)?;
 
+        bytes.extend(v);
         self.target.write(bytes.freeze()).await?;
 
         Ok(())
     }
 
     async fn write_fragment_for_frame(&mut self, frame: &Frame) -> anyhow::Result<()> {
-        let media_duration = frame.time.clone() - self.prev_time.clone().unwrap();
-        let base_offset = self.prev_time.clone().unwrap() - self.start_time.clone().unwrap();
+        let prev_time = self.prev_times.entry(frame.stream.id).or_insert(frame.time.clone());
+        let start_time = self.start_times.entry(frame.stream.id).or_insert(frame.time.clone());
+
+        let media_duration = frame.time.clone() - prev_time.clone();
+        let base_offset = prev_time.clone() - start_time.clone();
+
+
+        let track_id = frame.stream.id;
+        let track_id = if frame.stream.is_video() { 1 } else { 2 };
 
         let duration = if media_duration.duration == 0 {
             1800
@@ -78,56 +126,44 @@ impl FragmentedMp4WriteFilter {
             media_duration.duration
         };
 
-        // println!("duration: {:?}", duration);
-        //dbg!(&duration.duration);
-
-        let mut moof = MovieFragmentBox {
-            mfhd: MovieFragmentHeaderBox {
-                sequence_number: self.sequence_id,
-            },
-            traf: TrackFragmentBox {
-                tfhd: TrackFragmentHeaderBox {
-                    track_id: 1,
-                    base_data_offset: None,
-                    sample_description_index: None,
-                    default_sample_duration: None,
-                    default_sample_size: None,
-                    default_sample_flags: None,
-                    duration_is_empty: false,
-                    default_base_is_moof: true,
-                },
-                track_runs: vec![TrackFragmentRunBox {
-                    data_offset: Some(0),
-                    first_sample_flags: if frame.dependency != FrameDependency::None {
+        let mut moof = MovieFragmentBox::new(
+            MovieFragmentHeaderBox::new(self.sequence_id),
+            TrackFragmentBox::new(
+                TrackFragmentHeaderBox::new(track_id, None, None, None, None, None, false, true),
+                vec![TrackFragmentRunBox::new(
+                    Some(0),
+                    if frame.dependency != FrameDependency::None {
                         Some(0x10000)
                     } else {
                         None
                     },
-                    samples: vec![TrackFragmentSample {
+                    vec![TrackFragmentSample {
                         duration: Some(duration as _),
                         size: Some(frame.buffer.len() as _),
                         flags: None,
                         composition_time_offset: None,
                     }],
-                }],
-                base_media_decode_time: Some(TrackFragmentBaseMediaDecodeTimeBox {
-                    base_media_decode_time: base_offset.duration as _,
-                }),
-            },
-        };
+                )],
+                Some(TrackFragmentBaseMediaDecodeTimeBox::new(
+                    base_offset.duration as u64,
+                )),
+            ),
+        );
 
         // patch data offset to point to contents of our 'mdat'
-        moof.traf.track_runs[0].data_offset = Some(moof.size() as i32 + 12);
+        moof.traf.track_runs[0].data_offset = Some(moof.total_size() as i32 + 8);
 
-        let mdat = MediaDataBox {
-            data: &frame.buffer,
-        };
+        let mdat = MediaDataBox::new(Cow::Borrowed(&frame.buffer));
 
         let mut bytes = bytes::BytesMut::with_capacity(1024);
+        // FIXME use bytes or vec not both
+        let mut v = Vec::with_capacity(1024);
 
-        moof.write(&mut bytes)?;
-        mdat.write(&mut bytes)?;
+        moof.write(&mut v)?;
+        mdat.write(&mut v)?;
 
+
+        bytes.extend(v);
         self.target.write(bytes.freeze()).await?;
 
         self.sequence_id += 1;
@@ -141,31 +177,23 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
     async fn start(&mut self, streams: Vec<Stream>) -> anyhow::Result<()> {
         self.target.start().await?;
 
-        // TODO: handle audio streams
-        self.write_preamble(streams.iter().find(|s| s.is_video()).unwrap())
-            .await?;
+        let video = streams.iter().find(|s| s.is_video()).unwrap();
+        let audio = streams.iter().find(|s| s.is_audio());
+        self.write_preamble(video, audio).await?;
 
         Ok(())
     }
 
     async fn write(&mut self, frame: Frame) -> anyhow::Result<()> {
-        if !frame.stream.is_video() {
-            return Ok(());
-        }
+        let start_time = self.start_times.entry(frame.stream.id).or_insert(frame.time.clone());
 
-        if self.start_time.is_none() {
-            self.start_time = Some(frame.time.clone());
-            self.prev_time = Some(frame.time.clone());
-        }
-
-        let _duration: chrono::Duration =
-            (frame.time.since(self.start_time.as_ref().unwrap())).into();
+        let _duration: chrono::Duration = frame.time.since(start_time).into();
 
         //log::debug!("{}", duration);
 
         self.write_fragment_for_frame(&frame).await?;
 
-        self.prev_time = Some(frame.time.clone());
+        self.prev_times.insert(frame.stream.id, frame.time.clone());
 
         Ok(())
     }
@@ -183,73 +211,105 @@ fn get_sample_entry_for_codec_type(codec: &CodecTypeInfo) -> SampleEntry {
                 ref pps,
             } = video.extra
             {
-                SampleEntry::Avc(AvcSampleEntryBox {
-                    width: video.width as _,
-                    height: video.height as _,
-                    avcc: AvcConfigurationBox {
-                        config: AvcDecoderConfigurationRecord {
-                            profile_indication,
-                            profile_compatibility,
-                            level_indication,
-                            sequence_parameter_set: sps.to_vec(),
-                            picture_parameter_set: pps.to_vec(),
-                        },
-                    },
-                })
+                SampleEntry::Avc(AvcSampleEntryBox::new(
+                    video.width as u16,
+                    video.height as u16,
+                    AvcConfigurationBox::new(AvcDecoderConfigurationRecord {
+                        profile_indication,
+                        profile_compatibility,
+                        level_indication,
+                        sequence_parameter_sets: vec![SequenceParameterSet(sps.to_vec())],
+                        picture_parameter_sets: vec![PictureParameterSet(pps.to_vec())],
+                    }),
+                ))
             } else {
                 todo!()
             }
         }
+        CodecTypeInfo::Audio(audio) => SampleEntry::Mp4a(Mpeg4AudioSampleEntryBox::new(
+            2,
+            16,
+            48000,
+            EsdBox::new(EsDescriptor::new(
+                2,
+                DecoderConfigDescriptor::new(
+                    0x40,
+                    audio
+                        .extra
+                        .decoder_specific_data()
+                        .map(DecoderSpecificInfo::new),
+                ),
+            )),
+        )),
         _ => todo!(),
     }
 }
 
-fn get_track_for_stream(stream: &Stream) -> TrackBox {
-    TrackBox {
-        tkhd: TrackHeaderBox {
-            creation_time: 0,
-            modification_time: 0,
-            track_id: 1,
-            duration: 0,
-        },
-        mdia: MediaBox {
-            mdhd: MediaHeaderBox {
-                creation_time: 0,
-                modification_time: 0,
-                timescale: stream.timebase.denominator,
-                duration: 0,
-            },
-            hdlr: HandlerBox {
-                handler_type: 0x76696465,
-                name: String::from("Video Handler"),
-            },
-            minf: MediaInformationBox {
-                media_header: MediaHeader::Video(VideoMediaHeaderBox {}),
-                dinf: DataInformationBox {
-                    dref: DataReferenceBox {
-                        entries: vec![DataEntryUrlBox {
-                            location: String::from(""),
-                        }],
-                    },
-                },
-                stbl: SampleTableBox {
-                    stsd: SampleDescriptionBox {
-                        entries: vec![get_sample_entry_for_codec_type(&stream.codec.properties)],
-                    },
-                    stts: TimeToSampleBox {
-                        entries: Vec::new(),
-                    },
-                    stsc: SampleToChunkBox {
-                        entries: Vec::new(),
-                    },
-                    stsz: SampleSizeBox {
-                        sample_sizes: Vec::new(),
-                    },
-                    co64: ChunkLargeOffsetBox {
-                        chunk_offsets: Vec::new(),
-                    },
-                },
-            },
-        },
-    }
+fn get_track_for_video_stream(stream: &Stream) -> TrackBox {
+    let (width, height) = stream
+        .codec
+        .video()
+        .map(|v| (v.width, v.height))
+        .unwrap_or((1920, 1080));
+    TrackBox::new(
+        TrackHeaderBox::new(
+            TrackHeaderFlags::ENABLED | TrackHeaderFlags::IN_MOVIE,
+            1, // track_id
+            0,
+            width.into(),
+            height.into(),
+        ),
+        MediaBox::new(
+            MediaHeaderBox::new(stream.timebase.denominator, 0),
+            HandlerBox::new(*b"vide", String::from("Video Handler")),
+            MediaInformationBox::new(
+                MediaHeader::Video(VideoMediaHeaderBox::new()),
+                DataInformationBox::new(DataReferenceBox::new(vec![DataEntryUrlBox::new(
+                    String::new(),
+                )])),
+                SampleTableBox::new(
+                    SampleDescriptionBox::new(vec![get_sample_entry_for_codec_type(
+                        &stream.codec.properties,
+                    )]),
+                    TimeToSampleBox::new(Vec::new()),
+                    SampleToChunkBox::new(Vec::new()),
+                    SampleSizeBox::new(SampleSizes::Variable(Vec::new())),
+                    ChunkOffsets::Co64(ChunkLargeOffsetBox::new(Vec::new())),
+                    None,
+                ),
+            ),
+        ),
+    )
+}
+
+fn get_track_for_audio_stream(stream: &Stream) -> TrackBox {
+    TrackBox::new(
+        TrackHeaderBox::new(
+            TrackHeaderFlags::ENABLED | TrackHeaderFlags::IN_MOVIE,
+            2, // track_id
+            0,
+            0.into(),
+            0.into(),
+        ),
+        MediaBox::new(
+            MediaHeaderBox::new(48000, 0),
+            HandlerBox::new(*b"soun", String::from("Audio Handler")),
+            MediaInformationBox::new(
+                MediaHeader::Sound(SoundMediaHeaderBox::new()),
+                DataInformationBox::new(DataReferenceBox::new(vec![DataEntryUrlBox::new(
+                    String::new(),
+                )])),
+                SampleTableBox::new(
+                    SampleDescriptionBox::new(vec![get_sample_entry_for_codec_type(
+                        &stream.codec.properties,
+                    )]),
+                    TimeToSampleBox::new(Vec::new()),
+                    SampleToChunkBox::new(Vec::new()),
+                    SampleSizeBox::new(SampleSizes::Variable(Vec::new())),
+                    ChunkOffsets::Co64(ChunkLargeOffsetBox::new(Vec::new())),
+                    None,
+                ),
+            ),
+        ),
+    )
 }

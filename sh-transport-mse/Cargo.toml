@@ -15,3 +15,5 @@ anyhow = "1.0"
 log = "0.4"
 chrono = "0.4"
 tracing = "0.1"
+mpeg4-audio-const = "0.2.0"
+rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }

@@ -70,6 +70,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "av-data"
+version = "0.3.0"
+source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"
+dependencies = [
+ "byte-slice-cast",
+ "bytes",
+ "num-derive",
+ "num-rational",
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
+name = "av-format"
+version = "0.3.1"
+source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"
+dependencies = [
+ "av-data",
+ "log",
+ "thiserror",
+]
+
+[[package]]
+name = "av-mp4"
+version = "0.1.0"
+source = "git+https://github.com/Jokler/av-mp4?branch=add-audio#87ab46151ac2637fbe44e50709701906f46e8d4e"
+dependencies = [
+ "av-data",
+ "av-format",
+ "bitflags",
+ "bytemuck",
+ "byteorder",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "axum"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -157,6 +194,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "byte-slice-cast"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d30c751592b77c499e7bce34d99d67c2c11bdc0574e9a488ddade14150a4698"
+
+[[package]]
+name = "bytemuck"
+version = "1.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72957246c41db82b8ef88a5486143830adeb8227ef9837740bdec67724cf2c5b"
+
+[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,6 +216,12 @@ name = "bytes"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+
+[[package]]
+name = "bytesize"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c58ec36aac5066d5ca17df51b3e70279f5670a72102f5752cb7e7c856adfc70"
 
 [[package]]
 name = "cache-padded"
@@ -283,17 +338,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71748c87425e358c795de4bc26b86bbeb4a1158fc409675fbb28ebffca7a64f4"
 dependencies = [
  "nom",
-]
-
-[[package]]
-name = "fmp4"
-version = "0.1.0"
-dependencies = [
- "bitflags",
- "byteorder",
- "bytes",
- "four-cc",
- "thiserror",
 ]
 
 [[package]]
@@ -673,6 +717,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp4ra-rust"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be9daf03b43bf3842962947c62ba40f411e46a58774c60838038f04a67d17626"
+dependencies = [
+ "four-cc",
+]
+
+[[package]]
+name = "mpeg4-audio-const"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96a1fe2275b68991faded2c80aa4a33dba398b77d276038b8f50701a22e55918"
+
+[[package]]
 name = "nom"
 version = "6.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,12 +753,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93ab6289c7b344a8a9f60f88d80aa20032336fe78da341afc91c8a2341fc75f"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-derive"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d41702bd167c2df5520b384281bc111a4b5efcf7fbc4c9c222c815b07e0a6a6a"
+dependencies = [
+ "autocfg",
+ "num-bigint",
+ "num-integer",
  "num-traits",
 ]
 
@@ -921,6 +1014,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
+name = "rfc6381-codec"
+version = "0.1.1-dev"
+source = "git+https://github.com/dholroyd/rfc6381-codec#06ba2c402f46bba42697ad599603760189adb63f"
+dependencies = [
+ "four-cc",
+ "mp4ra-rust",
+ "mpeg4-audio-const",
+]
+
+[[package]]
 name = "rml_amf0"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -998,9 +1101,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "av-mp4",
  "bytes",
  "chrono",
- "fmp4",
  "log",
  "sh-media",
  "tracing",
@@ -1012,10 +1115,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "av-format",
+ "av-mp4",
  "bytes",
  "failure",
  "flvparse",
- "fmp4",
  "futures",
  "h264-reader",
  "rml_rtmp",
@@ -1034,11 +1138,13 @@ dependencies = [
  "async-channel",
  "async-trait",
  "bytes",
+ "bytesize",
  "chrono",
  "e-ring",
  "gcd",
  "h264-reader",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1052,6 +1158,8 @@ dependencies = [
  "chrono",
  "futures",
  "log",
+ "mpeg4-audio-const",
+ "rfc6381-codec",
  "sh-fmp4",
  "sh-media",
  "tokio",
@@ -1535,3 +1643,13 @@ name = "wyz"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
+
+[[patch.unused]]
+name = "av-bitstream"
+version = "0.1.2"
+source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"
+
+[[patch.unused]]
+name = "av-codec"
+version = "0.2.2"
+source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"

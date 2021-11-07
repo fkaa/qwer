@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
 
-// use slog::{trace};
+use tracing::*;
 
 enum ReadOrWriteFilter {
     Read(Box<dyn FrameReadFilter + Send + Unpin>),
@@ -126,7 +126,6 @@ impl FrameAnalyzerFilter {
                 };
 
                 /*trace!(
-                    self.logger,
                     "Metrics for {} stream #{} fps: {}, std-dev: {:.3} ms, bitrate: {}/s",
                     action,
                     stream_id,
