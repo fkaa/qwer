@@ -1,0 +1,17 @@
+[package]
+name = "sh-transport-mse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+axum = { version = "0.2", features = ["ws"] }
+futures = "0.3"
+sh-media = { path = "../sh-media" }
+sh-fmp4 = { path = "../sh-fmp4" }
+async-trait = "0.1"
+bytes = "1.0"
+anyhow = "1.0"
+log = "0.4"
+chrono = "0.4"
+tracing = "0.1"

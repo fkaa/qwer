@@ -1,28 +1,14 @@
-
-
-
-
-
-
-
-
-
 use h264_reader::{
-    annexb::{AnnexBReader, NalReader},
+    annexb::{AnnexBReader},
     nal::{
         GenericNalSwitch, NalHandler, NalHeader, UnitType,
     },
     Context,
 };
 
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use crate::ContextLogger;
-
-use super::{BitstreamFraming, Frame, FrameReadFilter, FrameWriteFilter, Stream};
-
-use slog::{debug};
+use super::{BitstreamFraming, Frame, FrameWriteFilter, Stream};
 
 const THREE_BYTE_STARTCODE: [u8; 3] = [0, 0, 1];
 const FOUR_BYTE_STARTCODE: [u8; 4] = [0, 0, 0, 1];
@@ -191,7 +177,6 @@ impl NalHandler for NalFramer {
 }
 
 pub struct BitstreamFramerFilter {
-    logger: ContextLogger,
     streams: Vec<Stream>,
     stream_target_framings: Vec<(u32, BitstreamFraming)>,
     target_framing: BitstreamFraming,
@@ -200,12 +185,10 @@ pub struct BitstreamFramerFilter {
 
 impl BitstreamFramerFilter {
     pub fn new(
-        logger: ContextLogger,
         target_framing: BitstreamFraming,
         target: Box<dyn FrameWriteFilter + Send + Unpin>,
     ) -> Self {
         Self {
-            logger,
             streams: Vec::new(),
             stream_target_framings: Vec::new(),
             target_framing,
@@ -220,18 +203,18 @@ impl FrameWriteFilter for BitstreamFramerFilter {
         for stream in &mut streams {
             if let Some(bitstream_format) = stream.bitstream_format() {
                 if bitstream_format != self.target_framing {
-                    debug!(
+                    /*debug!(
                         self.logger,
                         "Converting from {:?} to {:?}", bitstream_format, self.target_framing
-                    );
+                    );*/
 
                     stream.set_bitstream_format(self.target_framing);
 
-                    debug!(
+                    /*debug!(
                         self.logger,
                         "Converted after {:?}",
                         stream.bitstream_format()
-                    );
+                    );*/
                     self.stream_target_framings
                         .push((stream.id, bitstream_format));
                 }

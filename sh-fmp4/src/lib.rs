@@ -1,18 +1,12 @@
 use fmp4::*;
 
-use crate::media::{
+use sh_media::{
     ByteWriteFilter2, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameWriteFilter,
     MediaDuration, MediaTime, Stream, VideoCodecSpecificInfo,
 };
 use std::time::Instant;
 
-use log::warn;
-
-pub struct Mp4Segment {
-    start: MediaDuration,
-    duration: MediaDuration,
-    is_keyframe: bool,
-}
+use tracing::*;
 
 pub struct FragmentedMp4WriteFilter {
     target: Box<dyn ByteWriteFilter2 + Send + Unpin>,
@@ -134,15 +128,7 @@ impl FragmentedMp4WriteFilter {
         moof.write(&mut bytes)?;
         mdat.write(&mut bytes)?;
 
-        let _segment = Mp4Segment {
-            start: base_offset,
-            duration: media_duration,
-            is_keyframe: frame.dependency == FrameDependency::None,
-        };
-
         self.target.write(bytes.freeze()).await?;
-        let _now = Instant::now();
-        //println!("frame delivery took: {:?}", now - frame.received);
 
         self.sequence_id += 1;
 

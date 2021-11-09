@@ -1,33 +1,18 @@
-
-
-
-
-
-
 use std::sync::{Arc, Mutex};
 
-
-
-
-use crate::ContextLogger;
-
 use super::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
-
-use slog::{debug};
 
 /// A queue which broadcasts [`Frame`] to multiple readers.
 #[derive(Clone)]
 pub struct MediaFrameQueue {
-    logger: ContextLogger,
     // FIXME: alternative to mutex here?
     targets: Arc<Mutex<Vec<async_channel::Sender<Frame>>>>,
     streams: Arc<Mutex<Vec<Stream>>>,
 }
 
 impl MediaFrameQueue {
-    pub fn new(logger: ContextLogger) -> Self {
+    pub fn new() -> Self {
         MediaFrameQueue {
-            logger,
             targets: Arc::new(Mutex::new(Vec::new())),
             streams: Arc::new(Mutex::new(Vec::new())),
         }
@@ -55,16 +40,16 @@ impl MediaFrameQueue {
 
             match result {
                 TrySendError::Full(_) => {
-                    debug!(
+                    /*debug!(
                         self.logger,
                         "Closing frame queue target due to channel overflow"
-                    )
+                    )*/
                 }
                 TrySendError::Closed(_) => {
-                    debug!(
+                    /*debug!(
                         self.logger,
                         "Closing frame queue target due to channel disconnection."
-                    )
+                    )*/
                 }
             }
 
@@ -81,7 +66,7 @@ impl MediaFrameQueue {
     pub fn get_receiver(&self) -> MediaFrameQueueReceiver {
         let (send, recv) = async_channel::bounded(50000);
 
-        debug!(self.logger, "Adding frame queue target");
+        // debug!(self.logger, "Adding frame queue target");
 
         let mut targets = self.targets.lock().unwrap();
         targets.push(send);

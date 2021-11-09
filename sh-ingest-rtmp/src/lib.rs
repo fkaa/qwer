@@ -1,18 +1,5 @@
-use crate::{
-    AudioCodecInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
-    FilterGraph, Fraction, Frame, FrameAnalyzerFilter, FrameDependency, FrameReadFilter,
-    MediaFrameQueue, MediaTime, SoundType, Stream, VideoCodecInfo, VideoCodecSpecificInfo,
-};
-
-use crate::logger::*;
-use crate::StreamRepository;
 use bytes::Bytes;
 use failure::Fail;
-use fmp4::AvcDecoderConfigurationRecord;
-use futures::{
-    channel::mpsc::{channel, Receiver, Sender},
-    SinkExt,
-};
 use h264_reader::{
     annexb::AnnexBReader,
     nal::{
@@ -23,11 +10,6 @@ use h264_reader::{
     rbsp::decode_nal,
     Context,
 };
-
-use slog::{debug, info, warn};
-
-use tokio::net::{tcp, TcpListener, TcpStream};
-
 use rml_rtmp::{
     chunk_io::Packet,
     handshake::{Handshake, HandshakeProcessResult, PeerType},
@@ -36,17 +18,119 @@ use rml_rtmp::{
     },
     time::RtmpTimestamp,
 };
-use stop_token::StopSource;
+use futures::{
+    channel::mpsc::{channel, Receiver, Sender},
+    SinkExt,
+};
+use tokio::net::TcpListener;
+use tracing::*;
+
+use sh_media::{
+    AudioCodecInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
+    Fraction, Frame, FrameDependency, FrameReadFilter,
+    MediaTime, SoundType, Stream, VideoCodecInfo, VideoCodecSpecificInfo, TcpReadFilter, TcpWriteFilter, split_tcp_filters,
+};
 
 use std::{
     cell::RefCell,
     collections::VecDeque,
-    io::{self, Cursor},
-    sync::{Arc, RwLock},
+    io::Cursor,
+    sync::Arc,
     time::Instant,
 };
 
 const RTMP_TIMEBASE: Fraction = Fraction::new(1, 1000);
+
+#[derive(Debug, thiserror::Error)]
+pub enum RtmpError {
+    #[error("IO error: {0}")]
+    TokioIo(#[from] tokio::io::Error),
+
+    //#[error("IO error: {0}")]
+    //Io(#[from] std::io::Error),
+
+    #[error("{0}")]
+    Handshake(rml_rtmp::handshake::HandshakeErrorKind),
+
+    #[error("{0}")]
+    ServerSession(rml_rtmp::sessions::ServerSessionErrorKind),
+
+    #[error("Failed to parse video tag")]
+    ParseVideoTag,
+
+    #[error("Failed to parse audio tag")]
+    ParseAudioTag,
+
+    #[error("Failed to parse AVC video packet")]
+    ParseAvcPacket,
+
+    #[error("{0}")]
+    Error(#[from] anyhow::Error),
+}
+
+pub struct RtmpListener {
+    listener: TcpListener,
+}
+
+impl RtmpListener {
+    pub async fn bind(addr: String) -> Result<Self, RtmpError> {
+        let listener = TcpListener::bind(addr).await?;
+
+        Ok(RtmpListener {
+            listener
+        })
+    }
+
+    pub async fn accept(&self) -> Result<(RtmpRequest, String, String), RtmpError> {
+        let (socket, _addr) = self.listener.accept().await?;
+
+
+        let (mut read, mut write) = split_tcp_filters(socket, 188 * 8);
+        let (server_session, results, request_id, app, key) = process(&mut read, &mut write).await?;
+
+        let request = RtmpRequest {
+            write,
+            read,
+            request_id,
+            results,
+            server_session
+        };
+
+        Ok((request, app, key))
+    }
+}
+
+pub struct RtmpRequest {
+    write: TcpWriteFilter,
+    read: TcpReadFilter,
+    request_id: u32,
+    results: VecDeque<ServerSessionResult>,
+    server_session: ServerSession,
+}
+
+impl RtmpRequest {
+    pub async fn authenticate(mut self) -> Result<RtmpSession, RtmpError> {
+        let results = self.server_session
+            .accept_request(self.request_id)
+            .map_err(|e| RtmpError::ServerSession(e.kind))?;
+
+        self.results.extend(results);
+
+        Ok(RtmpSession {
+            write: self.write,
+            read: self.read,
+            server_session: self.server_session,
+            results: self.results,
+        })
+    }
+}
+
+pub struct RtmpSession {
+    write: TcpWriteFilter,
+    read: TcpReadFilter,
+    server_session: ServerSession,
+    results: VecDeque<ServerSessionResult>,
+}
 
 #[derive(Debug, Default)]
 pub struct ParameterSetContext {
@@ -55,10 +139,8 @@ pub struct ParameterSetContext {
 }
 
 pub struct RtmpReadFilter {
-    logger: ContextLogger,
-
     read_filter: TcpReadFilter,
-    stop_source: StopSource,
+    // stop_source: StopSource,
 
     rtmp_server_session: ServerSession,
     rtmp_tx: Sender<Packet>,
@@ -71,59 +153,46 @@ pub struct RtmpReadFilter {
     audio_time: u64,
     prev_audio_time: Option<RtmpTimestamp>,
 
+    results: VecDeque<ServerSessionResult>,
     frames: VecDeque<Frame>,
 }
 
 async fn rtmp_write_task(
-    logger: &ContextLogger,
     mut write_filter: TcpWriteFilter,
     mut rtmp_rx: Receiver<Packet>,
 ) -> anyhow::Result<()> {
-    use crate::media::ByteWriteFilter2;
     use futures::stream::StreamExt;
 
-    debug!(logger, "Starting RTMP write task");
+    debug!("Starting RTMP write task");
 
     loop {
         while let Some(pkt) = rtmp_rx.next().await {
             write_filter.write(pkt.bytes.into()).await?;
         }
     }
-
-    Ok(())
 }
 
 impl RtmpReadFilter {
-    pub fn new(
-        logger: ContextLogger,
-        read_filter: TcpReadFilter,
-        write_filter: TcpWriteFilter,
-        rtmp_server_session: ServerSession,
-    ) -> Self {
+    pub fn new(session: RtmpSession) -> Self {
         let (rtmp_tx, rtmp_rx) = channel(500);
-        let stop_source = StopSource::new();
+        // let stop_source = StopSource::new();
 
-        let write_task_logger = logger.scope();
-        tokio::spawn(stop_source.stop_token().stop_future(async move {
-            match rtmp_write_task(&write_task_logger, write_filter, rtmp_rx).await {
+        tokio::spawn(/*stop_source.stop_token().stop_future(*/async move {
+            match rtmp_write_task(session.write, rtmp_rx).await {
                 Ok(()) => {
-                    debug!(write_task_logger, "RTMP write task finished without errors");
+                    debug!("RTMP write task finished without errors");
                 }
                 Err(e) => {
-                    warn!(
-                        write_task_logger,
-                        "RTMP write task finished with error: {}", e
-                    );
+                    warn!("RTMP write task finished with error: {}", e);
                 }
             }
-        }));
+        });
 
         RtmpReadFilter {
-            logger,
-            read_filter,
-            stop_source,
+            read_filter: session.read,
+            // stop_source,
 
-            rtmp_server_session,
+            rtmp_server_session: session.server_session,
             rtmp_tx,
 
             video_stream: None,
@@ -134,6 +203,7 @@ impl RtmpReadFilter {
             audio_time: 0,
             prev_audio_time: None,
 
+            results: session.results,
             frames: VecDeque::new(),
         }
     }
@@ -250,7 +320,7 @@ impl RtmpReadFilter {
     }
 
     async fn wait_for_metadata(&mut self) -> anyhow::Result<StreamMetadata> {
-        debug!(self.logger, "Waiting for metadata");
+        // debug!(self.logger, "Waiting for metadata");
 
         loop {
             let bytes = self.read_filter.read().await?;
@@ -301,8 +371,8 @@ impl RtmpReadFilter {
         Ok(())
     }
 
-    async fn process_results(&mut self, results: Vec<ServerSessionResult>) -> anyhow::Result<()> {
-        for result in results {
+    async fn process_results<I: IntoIterator<Item=ServerSessionResult>>(&mut self, results: I) -> anyhow::Result<()> {
+        for result in results.into_iter() {
             match result {
                 ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
                 ServerSessionResult::RaisedEvent(evt) => self.process_event(evt).await?,
@@ -325,21 +395,13 @@ impl RtmpReadFilter {
         Ok(())
     }
 
-    async fn try_get_frame(&mut self) -> anyhow::Result<Option<Frame>> {
-        if let Some(frame) = self.frames.pop_front() {
-            return Ok(Some(frame));
-        }
-
-        self.fetch().await?;
-
-        Ok(self.frames.pop_front())
-    }
-
     async fn get_frame(&mut self) -> anyhow::Result<Frame> {
         loop {
-            if let Some(frame) = self.try_get_frame().await? {
+            if let Some(frame) = self.frames.pop_front() {
                 return Ok(frame);
             }
+
+            self.fetch().await?;
         }
     }
 }
@@ -347,6 +409,10 @@ impl RtmpReadFilter {
 #[async_trait::async_trait]
 impl FrameReadFilter for RtmpReadFilter {
     async fn start(&mut self) -> anyhow::Result<Vec<Stream>> {
+        let mut deq = VecDeque::new();
+        std::mem::swap(&mut deq, &mut self.results);
+        self.process_results(deq).await?;
+
         self.read_filter.start().await?;
 
         let metadata = self.wait_for_metadata().await?;
@@ -361,10 +427,10 @@ impl FrameReadFilter for RtmpReadFilter {
         }
 
         if let Some(ref video) = self.video_stream {
-            debug!(self.logger, "Video: {:?}", video);
+            debug!("Video: {:?}", video);
         }
         if let Some(ref audio) = self.audio_stream {
-            debug!(self.logger, "Audio: {:?}", audio);
+            debug!("Audio: {:?}", audio);
         }
 
         let streams = [self.video_stream.clone(), self.audio_stream.clone()];
@@ -383,19 +449,21 @@ impl FrameReadFilter for RtmpReadFilter {
 fn parse_video_tag(data: &[u8]) -> anyhow::Result<(flvparse::VideoTag, flvparse::AvcVideoPacket)> {
     let tag = flvparse::VideoTag::parse(&data, data.len())
         .map(|(_, t)| t)
-        .map_err(|_| anyhow::anyhow!("Failed to parse video tag"))?;
+        .map_err(|_| RtmpError::ParseVideoTag)?;
 
     let packet = flvparse::avc_video_packet(&tag.body.data, tag.body.data.len())
         .map(|(_, p)| p)
-        .map_err(|_| anyhow::anyhow!("Failed to parse AVC video packet"))?;
+        .map_err(|_| RtmpError::ParseAvcPacket)?;
 
     Ok((tag, packet))
 }
 
 fn parse_audio_tag(data: &[u8]) -> anyhow::Result<flvparse::AudioTag> {
-    flvparse::AudioTag::parse(&data, data.len())
+    let tag = flvparse::AudioTag::parse(&data, data.len())
         .map(|(_, t)| t)
-        .map_err(|_| anyhow::anyhow!("Failed to parse audio tag"))
+        .map_err(|_| RtmpError::ParseAudioTag)?;
+
+    Ok(tag)
 }
 
 fn get_codec_from_nalu(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<CodecInfo> {
@@ -407,7 +475,7 @@ fn get_codec_from_nalu(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Code
 
 fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<CodecInfo> {
     let mut reader = Cursor::new(packet.avc_data);
-    let record = AvcDecoderConfigurationRecord::read(&mut reader)?;
+    let record = fmp4::AvcDecoderConfigurationRecord::read(&mut reader)?;
 
     /*error!(
         "get_codec_from_mp4 SPS: {}",
@@ -463,8 +531,6 @@ fn get_video_codec_info(parameter_sets: ParameterSetContext) -> anyhow::Result<C
     let (pps_bytes, _pps) = parameter_sets.pps.unwrap();
 
     let sps = sps.unwrap();
-
-    dbg!(&sps);
 
     let (width, height) = sps.pixel_dimensions().unwrap();
 
@@ -530,7 +596,6 @@ impl NalHandler for SpsHandler {
         if let Ok(sps) = &sps {
             ctx.put_seq_param_set(sps.clone());
         }
-        ctx.user_context.sps = Some((buf.to_vec(), sps));
     }
 
     fn end(&mut self, _ctx: &mut Context<Self::Ctx>) {}
@@ -552,15 +617,13 @@ impl NalHandler for PpsHandler {
     fn end(&mut self, _ctx: &mut Context<Self::Ctx>) {}
 }
 
-async fn do_rtmp_handshake(
-    logger: &ContextLogger,
+async fn process(
     read: &mut TcpReadFilter,
     write: &mut TcpWriteFilter,
-) -> anyhow::Result<(ServerSession, String)> {
-    use failure::Fail;
-
+) -> Result<(ServerSession, VecDeque<ServerSessionResult>, u32, String, String), RtmpError> {
     let mut handshake = Handshake::new(PeerType::Server);
 
+    // Do initial RTMP handshake
     let (response, remaining) = loop {
         let bytes = read.read().await?;
         let response = match handshake.process_bytes(&bytes) {
@@ -569,7 +632,7 @@ async fn do_rtmp_handshake(
                 response_bytes,
                 remaining_bytes,
             }) => break (response_bytes, remaining_bytes),
-            Err(e) => return Err(e.kind.compat().into()),
+            Err(e) => return Err(RtmpError::Handshake(e.kind)),
         };
 
         write.write(response.into()).await?;
@@ -577,20 +640,21 @@ async fn do_rtmp_handshake(
 
     write.write(response.into()).await?;
 
+    // Create the RTMP session
     let config = ServerSessionConfig::new();
-    let (mut session, initial_results) = ServerSession::new(config).map_err(|e| e.kind.compat())?;
+    let (mut session, initial_results) = ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e.kind))?;
 
     let results = session
         .handle_input(&remaining)
-        .map_err(|e| e.kind.compat())?;
+        .map_err(|e| RtmpError::ServerSession(e.kind))?;
 
-    let mut authenticated = false;
-    let mut app = None;
     let mut r = VecDeque::new();
-    let mut application_name = None;
+    let mut stream_info = None;
 
     r.extend(results.into_iter().chain(initial_results.into_iter()));
 
+    // TODO: add a timeout to the handshake process
+    // Loop until we get a publish request
     loop {
         while let Some(res) = r.pop_front() {
             match res {
@@ -598,8 +662,6 @@ async fn do_rtmp_handshake(
                     write.write(packet.bytes.into()).await?
                 }
                 ServerSessionResult::RaisedEvent(evt) => {
-                    // dbg!(&evt);
-
                     match evt {
                         ServerSessionEvent::ConnectionRequested {
                             request_id,
@@ -608,12 +670,10 @@ async fn do_rtmp_handshake(
                             r.extend(
                                 session
                                     .accept_request(request_id)
-                                    .map_err(|e| e.kind.compat())?,
+                                    .map_err(|e| RtmpError::ServerSession(e.kind))?
                             );
 
-                            debug!(logger, "Accepted connection request");
-
-                            application_name = Some(app_name);
+                            debug!("Accepted connection request");
                         }
                         ServerSessionEvent::PublishStreamRequested {
                             request_id,
@@ -621,23 +681,7 @@ async fn do_rtmp_handshake(
                             stream_key,
                             mode: _,
                         } => {
-                            if authenticate_rtmp_stream(&app_name, &stream_key).await {
-                                r.extend(
-                                    session
-                                        .accept_request(request_id)
-                                        .map_err(|e| e.kind.compat())?,
-                                );
-                                /*for result in session.accept_request(request_id).map_err(|e| e.kind.compat())? {
-                                    if let ServerSessionResult::OutboundResponse(packet) = result {
-                                        write.write(packet.bytes.into()).await?;
-                                    }
-                                }*/
-
-                                authenticated = true;
-                                app = Some(app_name);
-
-                                debug!(logger, "Accepted publish stream request");
-                            }
+                            stream_info = Some((request_id, app_name, stream_key));
                         }
                         _ => {}
                     }
@@ -646,171 +690,17 @@ async fn do_rtmp_handshake(
             }
         }
 
-        if let (true, Some(app)) = (authenticated, app.take()) {
-            return Ok((session, app));
+        // Return the partial session (unauthenticated) when we
+        // receive a publish request
+        if let Some((request_id, app, key)) = stream_info.take() {
+            return Ok((session, r, request_id, app, key));
         }
 
         // debug!("reading from endpoint!");
         let bytes = read.read().await?;
-        let results = session.handle_input(&bytes).map_err(|e| e.kind.compat())?;
-        /*debug!(
-            "got {} results from endpoint, {} total",
-            results.len(),
-            r.len()
-        );*/
+        let results = session
+            .handle_input(&bytes)
+            .map_err(|e| RtmpError::ServerSession(e.kind))?;
         r.extend(results);
-    }
-}
-
-async fn handle_tcp_socket(
-    logger: &ContextLogger,
-    socket: TcpStream,
-    stream_repo: Arc<RwLock<StreamRepository>>,
-) -> anyhow::Result<()> {
-    let (mut read_filter, mut write_filter) = create_tcp_filters(socket, 188 * 8);
-
-    let (server_session, sid) = do_rtmp_handshake(&logger, &mut read_filter, &mut write_filter).await?;
-
-    let filter_logger = logger.scope();
-
-    let queue = MediaFrameQueue::new(filter_logger.clone());
-    let rtmp_filter = RtmpReadFilter::new(
-        filter_logger.clone(),
-        read_filter,
-        write_filter,
-        server_session,
-    );
-    let rtmp_analyzer = FrameAnalyzerFilter::read(filter_logger.clone(), Box::new(rtmp_filter));
-
-    let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
-
-    info!(logger, "Starting a stream at '{}'", sid);
-
-    stream_repo
-        .write()
-        .unwrap()
-        .streams
-        .insert(sid.clone(), queue);
-
-    let result = graph.run().await;
-
-    stream_repo.write().unwrap().streams.remove(&sid);
-
-    result
-}
-
-async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
-    std::env::var("STREAM_KEY")
-        .map(|key| key == supplied_stream_key)
-        .unwrap_or(true)
-}
-
-pub fn listen(
-    logger: ContextLogger,
-    stream_repo: Arc<RwLock<StreamRepository>>,
-    rtmp_addr: String,
-) {
-    let fut = async move {
-        info!(logger, "Listening for RTMP connections at {}", rtmp_addr);
-
-        let listener = TcpListener::bind(rtmp_addr).await.unwrap();
-
-        loop {
-            let (socket, addr) = listener.accept().await.unwrap();
-            info!(logger, "RTMP connection from {:?}", addr);
-
-            let stream_repo = stream_repo.clone();
-            let logger = logger.scope();
-            tokio::spawn(async move {
-                info!(
-                    logger,
-                    "Establishing RTMP connection from {:?}",
-                    socket.peer_addr()
-                );
-
-                match handle_tcp_socket(&logger, socket, stream_repo).await {
-                    Ok(_) => info!(logger, "Finished streaming from RTMP"),
-                    Err(e) => warn!(logger, "Error while streaming from RTMP: {:?}", e),
-                }
-            });
-        }
-    };
-
-    tokio::spawn(fut);
-}
-
-fn create_tcp_filters(socket: TcpStream, buffer: usize) -> (TcpReadFilter, TcpWriteFilter) {
-    let (read, write) = socket.into_split();
-
-    (TcpReadFilter::new(read, buffer), TcpWriteFilter::new(write))
-}
-
-pub struct TcpWriteFilter {
-    write: tcp::OwnedWriteHalf,
-}
-
-impl TcpWriteFilter {
-    pub fn new(write: tcp::OwnedWriteHalf) -> Self {
-        Self { write }
-    }
-}
-
-#[async_trait::async_trait]
-impl ByteWriteFilter2 for TcpWriteFilter {
-    async fn start(&mut self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn write(&mut self, bytes: bytes::Bytes) -> anyhow::Result<()> {
-        use tokio::io::AsyncWriteExt;
-
-        let _ = self.write.write(&bytes).await?;
-
-        Ok(())
-    }
-}
-
-pub struct TcpReadFilter {
-    socket: tcp::OwnedReadHalf,
-    size: usize,
-    buf: Vec<u8>,
-}
-
-impl TcpReadFilter {
-    pub fn new(socket: tcp::OwnedReadHalf, size: usize) -> Self {
-        Self {
-            socket,
-            size,
-            buf: vec![0; size],
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl ByteReadFilter for TcpReadFilter {
-    async fn start(&mut self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn read(&mut self) -> anyhow::Result<Bytes> {
-        use tokio::io::AsyncReadExt;
-
-        loop {
-            match self.socket.read(&mut self.buf).await {
-                Ok(n) => {
-                    if n == 0 {
-                        return Err(anyhow::anyhow!("EOS!"));
-                    }
-
-                    return Ok(Bytes::copy_from_slice(&mut self.buf[..n]));
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
     }
 }

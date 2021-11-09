@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::ContextLogger;
-
 use super::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
 
-use slog::{trace};
+// use slog::{trace};
 
 enum ReadOrWriteFilter {
     Read(Box<dyn FrameReadFilter + Send + Unpin>),
@@ -89,25 +87,22 @@ impl StreamMetrics {
 }
 
 pub struct FrameAnalyzerFilter {
-    logger: ContextLogger,
     streams: Vec<Stream>,
     filter: ReadOrWriteFilter,
     metrics: HashMap<u32, StreamMetrics>,
 }
 
 impl FrameAnalyzerFilter {
-    pub fn read(logger: ContextLogger, target: Box<dyn FrameReadFilter + Send + Unpin>) -> Self {
+    pub fn read(target: Box<dyn FrameReadFilter + Send + Unpin>) -> Self {
         Self {
-            logger,
             streams: Vec::new(),
             filter: ReadOrWriteFilter::Read(target),
             metrics: HashMap::new(),
         }
     }
 
-    pub fn write(logger: ContextLogger, target: Box<dyn FrameWriteFilter + Send + Unpin>) -> Self {
+    pub fn write(target: Box<dyn FrameWriteFilter + Send + Unpin>) -> Self {
         Self {
-            logger,
             streams: Vec::new(),
             filter: ReadOrWriteFilter::Write(target),
             metrics: HashMap::new(),
@@ -117,20 +112,20 @@ impl FrameAnalyzerFilter {
     fn report(&mut self, frame: &Frame) {
         let stream_id = frame.stream.id;
 
-        if let Some(report) = self
+        if let Some(_report) = self
             .metrics
             .entry(stream_id)
             .or_insert(StreamMetrics::new())
             .add(&frame)
         {
             if self.streams.iter().find(|s| s.id == stream_id).is_some() {
-                let action = if matches!(self.filter, ReadOrWriteFilter::Read(_)) {
+                let _action = if matches!(self.filter, ReadOrWriteFilter::Read(_)) {
                     "reading"
                 } else {
                     "writing"
                 };
 
-                trace!(
+                /*trace!(
                     self.logger,
                     "Metrics for {} stream #{} fps: {}, std-dev: {:.3} ms, bitrate: {}/s",
                     action,
@@ -138,7 +133,7 @@ impl FrameAnalyzerFilter {
                     report.fps,
                     report.std_dev,
                     bytesize::ByteSize(report.bitrate)
-                )
+                )*/
             }
         }
     }

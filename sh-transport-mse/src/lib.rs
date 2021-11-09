@@ -1,24 +1,10 @@
-use crate::media::*;
-use crate::mp4; //::{FragmentedMp4WriteFilter, Mp4Metadata, Mp4Segment};
+use sh_media::*;
+use sh_media::{BitstreamFramerFilter, BitstreamFraming};
+use sh_fmp4::FragmentedMp4WriteFilter;
 
-use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Extension, Path,
-    },
-    response::IntoResponse,
-};
+use axum::extract::ws::{Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt, StreamExt};
-
 use bytes::{BufMut, BytesMut};
-
-use slog::{debug, error};
-
-use std::sync::Arc;
-
-use crate::{AppData, ContextLogger};
-
-use crate::media::{BitstreamFramerFilter, BitstreamFraming};
 
 struct WebSocketWriteFilter {
     sink: SplitSink<WebSocket, Message>,
@@ -62,47 +48,7 @@ fn get_codec_from_stream(stream: &Stream) -> anyhow::Result<(u8, u8, u8)> {
     }
 }
 
-pub async fn websocket_video(
-    ws: WebSocketUpgrade,
-    Path(stream): Path<String>,
-    Extension(data): Extension<Arc<AppData>>,
-) -> impl IntoResponse {
-    let logger = data.logger.scope();
-
-    debug!(logger, "Received websocket request for '{}'", stream);
-
-    ws.on_upgrade(move |socket| {
-        handle_websocket_video_response(logger, socket, stream, data.clone())
-    })
-}
-
-async fn handle_websocket_video_response(
-    logger: ContextLogger,
-    socket: WebSocket,
-    stream: String,
-    data: Arc<AppData>,
-) {
-    let queue_receiver = data
-        .stream_repo
-        .read()
-        .unwrap()
-        .streams
-        .get(&stream)
-        .map(|s| s.get_receiver());
-
-    if let Some(mut queue_receiver) = queue_receiver {
-        debug!(logger, "Found a stream at {}", stream);
-
-        if let Err(e) = start_websocket_filters(&logger, socket, &mut queue_receiver).await {
-            error!(logger, "{}", e);
-        }
-    } else {
-        debug!(logger, "Did not find a stream at {}", stream);
-    }
-}
-
 pub async fn start_websocket_filters(
-    logger: &ContextLogger,
     socket: WebSocket,
     read: &mut (dyn FrameReadFilter + Unpin + Send),
 ) -> anyhow::Result<()> {
@@ -120,15 +66,14 @@ pub async fn start_websocket_filters(
 
     // write
     let output_filter = WebSocketWriteFilter::new(sender);
-    let fmp4_filter = Box::new(mp4::FragmentedMp4WriteFilter::new(Box::new(output_filter)));
-    let write_analyzer = Box::new(FrameAnalyzerFilter::write(logger.clone(), fmp4_filter));
+    let fmp4_filter = Box::new(FragmentedMp4WriteFilter::new(Box::new(output_filter)));
+    let write_analyzer = Box::new(FrameAnalyzerFilter::write(fmp4_filter));
     let mut write = Box::new(BitstreamFramerFilter::new(
-        logger.clone(),
         BitstreamFraming::FourByteLength,
         write_analyzer,
     ));
 
-    let first_frame = wait_for_sync_frame(logger, read).await?;
+    let first_frame = wait_for_sync_frame(read).await?;
     write.start(streams).await?;
     write.write(first_frame).await?;
 

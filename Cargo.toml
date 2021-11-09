@@ -1,53 +1,8 @@
-[package]
-name = "wip"
-version = "0.1.0"
-authors = ["Felix Kaaman <tmtu@tmtu.ee>"]
-license = "AGPL-3.0-only"
-edition = "2018"
-
-[dependencies]
-axum = { version = "0.2", features = ["ws"] }
-hyper = { version = "0.14", features = ["full"] }
-tokio = { version = "1.0", features = ["full"] }
-tower = "0.4"
-futures = "0.3"
-futures-util = "0.3"
-async-channel = "1.6"
-async-trait = "0.1"
-
-bytesize = "1.1"
-e-ring = "0.3"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
-slog-async = "2.7"
-slog-term = "2.8"
-thiserror = "1.0"
-stop-token = { git = "https://github.com/soruh/stop-token" }
-failure = "0.1"
-anyhow = "1.0"
-chrono = "0.4"
-hex-slice = "0.1"
-gcd = "2.0"
-bytes = "1.0"
-log = "0.4"
-byteorder = "1.4"
-base64 = "0.13"
-serde = "*"
-serde_json = "*"
-
-webrtc-media = { version = "0.4.0" }
-webrtc = "0.2"
-interceptor = "0.4"
-sdp = "0.4"
-flvparse = "0.1"
-rml_rtmp = "0.4"
-rfc6381-codec = { git = "https://github.com/dholroyd/rfc6381-codec" }
-h264-reader = { git = "https://github.com/fkaa/h264-reader" } # "0.5"
-fmp4 = { path = "fmp4" }
-tracing-subscriber = "*"
-
-mpeg2ts-reader = "*"
-# srt-tokio = "0.1"
-# srt-protocol = "0.1"
-
-dotenv = "0.15.0"
-
+[workspace]
+members = [
+    "sh-media",
+    "sh-fmp4",
+    "sh-ingest-rtmp",
+    "sh-transport-mse",
+    "streamhead",
+]
