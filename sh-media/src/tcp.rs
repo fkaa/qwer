@@ -1,10 +1,8 @@
-use crate::{
-    ByteReadFilter, ByteWriteFilter2
-};
+use crate::{ByteReadFilter, ByteWriteFilter2};
 
-use tokio::net::{tcp, TcpStream};
 use bytes::Bytes;
 use std::io;
+use tokio::net::{tcp, TcpStream};
 
 pub fn split_tcp_filters(socket: TcpStream, buffer: usize) -> (TcpReadFilter, TcpWriteFilter) {
     let (read, write) = socket.into_split();

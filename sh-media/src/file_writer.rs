@@ -1,6 +1,5 @@
 use super::{ByteWriteFilter, ByteWriteFilter2, Stream};
 use tokio::fs::File;
-use std::io::Write;
 
 pub struct FileWriteFilter {
     file: File,

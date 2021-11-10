@@ -1,10 +1,9 @@
+use sh_fmp4::FragmentedMp4WriteFilter;
 use sh_media::*;
 use sh_media::{BitstreamFramerFilter, BitstreamFraming};
-use sh_fmp4::FragmentedMp4WriteFilter;
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt, StreamExt};
-use bytes::{BufMut, BytesMut};
 
 struct WebSocketWriteFilter {
     sink: SplitSink<WebSocket, Message>,
@@ -65,14 +64,14 @@ pub async fn start_websocket_filters(
     read: &mut (dyn FrameReadFilter + Unpin + Send),
 ) -> anyhow::Result<()> {
     let streams = read.start().await?;
-    let video_codec =
-        get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
+    let video_codec = get_codec_from_stream(streams.iter().find(|s| s.is_video()).unwrap())?;
 
-    let audio_codec =
-        get_codec_from_stream(streams.iter().find(|s| s.is_audio()).unwrap())?;
+    let audio_codec = get_codec_from_stream(streams.iter().find(|s| s.is_audio()).unwrap())?;
 
     let (mut sender, mut receiver) = socket.split();
-    sender.send(Message::Text(format!("{},{}", video_codec, audio_codec))).await?;
+    sender
+        .send(Message::Text(format!("{},{}", video_codec, audio_codec)))
+        .await?;
 
     // write
     let output_filter = WebSocketWriteFilter::new(sender);

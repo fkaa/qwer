@@ -2,27 +2,23 @@
 
 use async_channel::{Receiver, Sender};
 
-use std::{
-    fmt,
-    sync::Arc,
-    time::Instant,
-};
+use std::{fmt, sync::Arc, time::Instant};
 
 use bytes::Bytes;
 
 mod bitstream_framer;
+mod file_writer;
 mod frame_analyzer;
 mod media_frame_queue;
-mod wait_for_sync_frame;
-mod file_writer;
 mod tcp;
+mod wait_for_sync_frame;
 
 pub use bitstream_framer::*;
+pub use file_writer::*;
 pub use frame_analyzer::*;
 pub use media_frame_queue::*;
-pub use wait_for_sync_frame::*;
-pub use file_writer::*;
 pub use tcp::*;
+pub use wait_for_sync_frame::*;
 
 #[derive(Copy, Clone)]
 pub struct Fraction {

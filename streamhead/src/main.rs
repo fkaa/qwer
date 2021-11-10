@@ -1,22 +1,18 @@
 use axum::{
-    handler::{get, post},
-    response::{IntoResponse, sse::{Event, KeepAlive, Sse}, Html},
     extract::{
-        Extension, Path,
         ws::{WebSocket, WebSocketUpgrade},
+        Extension, Path,
     },
+    handler::get,
+    response::{Html, IntoResponse},
     AddExtensionLayer, Router,
 };
-use futures::stream::{self, Stream};
 use tracing::*;
 
-use sh_media::{
-    MediaFrameQueue, FrameAnalyzerFilter, FilterGraph,
-};
+use sh_media::{FilterGraph, FrameAnalyzerFilter, MediaFrameQueue};
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::convert::Infallible;
 
 #[derive(Default)]
 pub struct StreamRepository {
@@ -28,22 +24,15 @@ pub struct AppData {
     pub stream_repo: Arc<RwLock<StreamRepository>>,
 }
 
-async fn streams(
-    Extension(data): Extension<Arc<AppData>>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    use futures::StreamExt;
-
-    let stream = stream::repeat_with(|| Event::default().data("hi!"))
-        .map(Ok);
-
-    Sse::new(stream)
-}
-
 async fn handler() -> Html<&'static str> {
     Html("<h1>Hello, World!</h1>")
 }
 
-async fn rtmp_ingest(app: String, request: sh_ingest_rtmp::RtmpRequest, repo: Arc<RwLock<StreamRepository>>) -> anyhow::Result<()> {
+async fn rtmp_ingest(
+    app: String,
+    request: sh_ingest_rtmp::RtmpRequest,
+    repo: Arc<RwLock<StreamRepository>>,
+) -> anyhow::Result<()> {
     use sh_ingest_rtmp::RtmpReadFilter;
 
     let session = request.authenticate().await?;
@@ -55,16 +44,11 @@ async fn rtmp_ingest(app: String, request: sh_ingest_rtmp::RtmpRequest, repo: Ar
 
     info!("Starting a stream at '{}'", app);
 
-    repo
-        .write()
-        .unwrap()
-        .streams
-        .insert(app.clone(), queue);
+    repo.write().unwrap().streams.insert(app.clone(), queue);
 
     if let Err(e) = graph.run().await {
         error!("Error while reading from RTMP stream: {}", e);
     }
-
 
     info!("Stopping a stream at '{}'", app);
 
@@ -109,16 +93,10 @@ pub async fn websocket_video(
 ) -> impl IntoResponse {
     debug!("Received websocket request for '{}'", stream);
 
-    ws.on_upgrade(move |socket| {
-        handle_websocket_video_response(socket, stream, data.clone())
-    })
+    ws.on_upgrade(move |socket| handle_websocket_video_response(socket, stream, data.clone()))
 }
 
-async fn handle_websocket_video_response(
-    socket: WebSocket,
-    stream: String,
-    data: Arc<AppData>,
-) {
+async fn handle_websocket_video_response(socket: WebSocket, stream: String, data: Arc<AppData>) {
     let queue_receiver = data
         .stream_repo
         .read()
@@ -130,7 +108,8 @@ async fn handle_websocket_video_response(
     if let Some(mut queue_receiver) = queue_receiver {
         debug!("Found a stream at {}", stream);
 
-        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut queue_receiver).await {
+        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut queue_receiver).await
+        {
             error!("{}", e);
         }
     } else {
@@ -149,9 +128,7 @@ async fn start(web_addr: &str, rtmp_addr: String) -> anyhow::Result<()> {
     });
 
     info!("Starting webserver at {}", web_addr);
-    let data = AppData {
-        stream_repo,
-    };
+    let data = AppData { stream_repo };
 
     let app = Router::new()
         .route("/", get(handler))
@@ -173,8 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(Level::TRACE)
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let _ = dotenv::dotenv();
 
