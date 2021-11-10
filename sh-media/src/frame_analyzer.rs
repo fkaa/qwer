@@ -3,8 +3,6 @@ use std::time::Instant;
 
 use super::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
 
-use tracing::*;
-
 enum ReadOrWriteFilter {
     Read(Box<dyn FrameReadFilter + Send + Unpin>),
     Write(Box<dyn FrameWriteFilter + Send + Unpin>),

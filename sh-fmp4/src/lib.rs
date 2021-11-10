@@ -41,11 +41,11 @@ use av_mp4::boxes::{
 };
 
 use sh_media::{
-    ByteWriteFilter2, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameWriteFilter,
-    MediaDuration, MediaTime, Stream, VideoCodecSpecificInfo,
+    ByteWriteFilter2, CodecTypeInfo, Frame, FrameDependency, FrameWriteFilter, MediaTime, Stream,
+    VideoCodecSpecificInfo,
 };
 use std::borrow::Cow;
-use std::time::Instant;
+
 use std::collections::HashMap;
 
 use tracing::*;
@@ -54,7 +54,6 @@ pub struct FragmentedMp4WriteFilter {
     target: Box<dyn ByteWriteFilter2 + Send + Unpin>,
     start_times: HashMap<u32, MediaTime>,
     prev_times: HashMap<u32, MediaTime>,
-    time_scale: Option<Fraction>,
     sequence_id: u32,
 }
 
@@ -65,7 +64,6 @@ impl FragmentedMp4WriteFilter {
             start_times: HashMap::new(),
             prev_times: HashMap::new(),
             sequence_id: 0,
-            time_scale: None,
         }
     }
 
@@ -110,14 +108,18 @@ impl FragmentedMp4WriteFilter {
     }
 
     async fn write_fragment_for_frame(&mut self, frame: &Frame) -> anyhow::Result<()> {
-        let prev_time = self.prev_times.entry(frame.stream.id).or_insert(frame.time.clone());
-        let start_time = self.start_times.entry(frame.stream.id).or_insert(frame.time.clone());
+        let prev_time = self
+            .prev_times
+            .entry(frame.stream.id)
+            .or_insert(frame.time.clone());
+        let start_time = self
+            .start_times
+            .entry(frame.stream.id)
+            .or_insert(frame.time.clone());
 
         let media_duration = frame.time.clone() - prev_time.clone();
         let base_offset = prev_time.clone() - start_time.clone();
 
-
-        let track_id = frame.stream.id;
         let track_id = if frame.stream.is_video() { 1 } else { 2 };
 
         let duration = if media_duration.duration == 0 {
@@ -162,7 +164,6 @@ impl FragmentedMp4WriteFilter {
         moof.write(&mut v)?;
         mdat.write(&mut v)?;
 
-
         bytes.extend(v);
         self.target.write(bytes.freeze()).await?;
 
@@ -185,7 +186,10 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
     }
 
     async fn write(&mut self, frame: Frame) -> anyhow::Result<()> {
-        let start_time = self.start_times.entry(frame.stream.id).or_insert(frame.time.clone());
+        let start_time = self
+            .start_times
+            .entry(frame.stream.id)
+            .or_insert(frame.time.clone());
 
         let _duration: chrono::Duration = frame.time.since(start_time).into();
 
@@ -202,29 +206,26 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
 fn get_sample_entry_for_codec_type(codec: &CodecTypeInfo) -> SampleEntry {
     match codec {
         CodecTypeInfo::Video(video) => {
-            if let VideoCodecSpecificInfo::H264 {
+            let VideoCodecSpecificInfo::H264 {
                 bitstream_format: _,
                 profile_indication,
                 profile_compatibility,
                 level_indication,
                 ref sps,
                 ref pps,
-            } = video.extra
-            {
-                SampleEntry::Avc(AvcSampleEntryBox::new(
-                    video.width as u16,
-                    video.height as u16,
-                    AvcConfigurationBox::new(AvcDecoderConfigurationRecord {
-                        profile_indication,
-                        profile_compatibility,
-                        level_indication,
-                        sequence_parameter_sets: vec![SequenceParameterSet(sps.to_vec())],
-                        picture_parameter_sets: vec![PictureParameterSet(pps.to_vec())],
-                    }),
-                ))
-            } else {
-                todo!()
-            }
+            } = video.extra;
+
+            SampleEntry::Avc(AvcSampleEntryBox::new(
+                video.width as u16,
+                video.height as u16,
+                AvcConfigurationBox::new(AvcDecoderConfigurationRecord {
+                    profile_indication,
+                    profile_compatibility,
+                    level_indication,
+                    sequence_parameter_sets: vec![SequenceParameterSet(sps.to_vec())],
+                    picture_parameter_sets: vec![PictureParameterSet(pps.to_vec())],
+                }),
+            ))
         }
         CodecTypeInfo::Audio(audio) => SampleEntry::Mp4a(Mpeg4AudioSampleEntryBox::new(
             2,
@@ -241,7 +242,6 @@ fn get_sample_entry_for_codec_type(codec: &CodecTypeInfo) -> SampleEntry {
                 ),
             )),
         )),
-        _ => todo!(),
     }
 }
 

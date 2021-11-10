@@ -1,10 +1,10 @@
 use h264_reader::{
-    annexb::{AnnexBReader, NalReader},
+    annexb::AnnexBReader,
     nal::{GenericNalSwitch, NalHandler, NalHeader, UnitType},
     Context,
 };
 
-use super::{BitstreamFraming, Frame, FrameReadFilter, FrameWriteFilter, Stream};
+use super::{BitstreamFraming, Frame, FrameWriteFilter, Stream};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 const THREE_BYTE_STARTCODE: [u8; 3] = [0, 0, 1];

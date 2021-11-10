@@ -1,7 +1,11 @@
+use av_format::buffer::AccReader;
+use av_mp4::boxes::codec::avcc::AvcDecoderConfigurationRecord;
 use bytes::Bytes;
 use failure::Fail;
-use av_mp4::boxes::codec::avcc::AvcDecoderConfigurationRecord;
-use av_format::buffer::AccReader;
+use futures::{
+    channel::mpsc::{channel, Receiver, Sender},
+    SinkExt,
+};
 use h264_reader::{
     annexb::AnnexBReader,
     nal::{
@@ -20,26 +24,18 @@ use rml_rtmp::{
     },
     time::RtmpTimestamp,
 };
-use futures::{
-    channel::mpsc::{channel, Receiver, Sender},
-    SinkExt,
-};
 use tokio::net::TcpListener;
 use tracing::*;
 
 use sh_media::{
-    AudioCodecInfo, AudioCodecSpecificInfo, BitstreamFraming, ByteReadFilter, ByteWriteFilter2, CodecInfo, CodecTypeInfo,
-    Fraction, Frame, FrameDependency, FrameReadFilter,
-    MediaTime, SoundType, Stream, VideoCodecInfo, VideoCodecSpecificInfo, TcpReadFilter, TcpWriteFilter, split_tcp_filters,
+    split_tcp_filters, AudioCodecInfo, AudioCodecSpecificInfo, BitstreamFraming, ByteReadFilter,
+    ByteWriteFilter2, CodecInfo, CodecTypeInfo, Fraction, Frame, FrameDependency, FrameReadFilter,
+    MediaTime, SoundType, Stream, TcpReadFilter, TcpWriteFilter, VideoCodecInfo,
+    VideoCodecSpecificInfo,
 };
 
 use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    io::Cursor,
-    net::SocketAddr,
-    sync::Arc,
-    time::Instant,
+    cell::RefCell, collections::VecDeque, io::Cursor, net::SocketAddr, sync::Arc, time::Instant,
 };
 
 const RTMP_TIMEBASE: Fraction = Fraction::new(1, 1000);
@@ -52,7 +48,6 @@ pub enum RtmpError {
 
     //#[error("IO error: {0}")]
     //Io(#[from] std::io::Error),
-
     #[error("{0}")]
     Handshake(rml_rtmp::handshake::HandshakeErrorKind),
 
@@ -80,9 +75,7 @@ impl RtmpListener {
     pub async fn bind(addr: String) -> Result<Self, RtmpError> {
         let listener = TcpListener::bind(addr).await?;
 
-        Ok(RtmpListener {
-            listener
-        })
+        Ok(RtmpListener { listener })
     }
 
     pub async fn accept(&self) -> Result<(RtmpRequest, String, String), RtmpError> {
@@ -90,7 +83,8 @@ impl RtmpListener {
         socket.set_nodelay(true)?;
 
         let (mut read, mut write) = split_tcp_filters(socket, 188 * 8);
-        let (server_session, results, request_id, app, key) = process(&mut read, &mut write).await?;
+        let (server_session, results, request_id, app, key) =
+            process(&mut read, &mut write).await?;
 
         let request = RtmpRequest {
             write,
@@ -98,7 +92,7 @@ impl RtmpListener {
             addr,
             request_id,
             results,
-            server_session
+            server_session,
         };
 
         Ok((request, app, key))
@@ -116,7 +110,8 @@ pub struct RtmpRequest {
 
 impl RtmpRequest {
     pub async fn authenticate(mut self) -> Result<RtmpSession, RtmpError> {
-        let results = self.server_session
+        let results = self
+            .server_session
             .accept_request(self.request_id)
             .map_err(|e| RtmpError::ServerSession(e.kind))?;
 
@@ -151,7 +146,6 @@ pub struct ParameterSetContext {
 pub struct RtmpReadFilter {
     read_filter: TcpReadFilter,
     // stop_source: StopSource,
-
     rtmp_server_session: ServerSession,
     rtmp_tx: Sender<Packet>,
 
@@ -187,7 +181,7 @@ impl RtmpReadFilter {
         let (rtmp_tx, rtmp_rx) = channel(500);
         // let stop_source = StopSource::new();
 
-        tokio::spawn(/*stop_source.stop_token().stop_future(*/async move {
+        tokio::spawn(/*stop_source.stop_token().stop_future(*/ async move {
             match rtmp_write_task(session.write, rtmp_rx).await {
                 Ok(()) => {
                     debug!("RTMP write task finished without errors");
@@ -201,7 +195,6 @@ impl RtmpReadFilter {
         RtmpReadFilter {
             read_filter: session.read,
             // stop_source,
-
             rtmp_server_session: session.server_session,
             rtmp_tx,
 
@@ -383,7 +376,10 @@ impl RtmpReadFilter {
         Ok(())
     }
 
-    async fn process_results<I: IntoIterator<Item=ServerSessionResult>>(&mut self, results: I) -> anyhow::Result<()> {
+    async fn process_results<I: IntoIterator<Item = ServerSessionResult>>(
+        &mut self,
+        results: I,
+    ) -> anyhow::Result<()> {
         for result in results.into_iter() {
             match result {
                 ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
@@ -641,7 +637,16 @@ impl NalHandler for PpsHandler {
 async fn process(
     read: &mut TcpReadFilter,
     write: &mut TcpWriteFilter,
-) -> Result<(ServerSession, VecDeque<ServerSessionResult>, u32, String, String), RtmpError> {
+) -> Result<
+    (
+        ServerSession,
+        VecDeque<ServerSessionResult>,
+        u32,
+        String,
+        String,
+    ),
+    RtmpError,
+> {
     let mut handshake = Handshake::new(PeerType::Server);
 
     // Do initial RTMP handshake
@@ -663,7 +668,8 @@ async fn process(
 
     // Create the RTMP session
     let config = ServerSessionConfig::new();
-    let (mut session, initial_results) = ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e.kind))?;
+    let (mut session, initial_results) =
+        ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e.kind))?;
 
     let results = session
         .handle_input(&remaining)
@@ -682,31 +688,29 @@ async fn process(
                 ServerSessionResult::OutboundResponse(packet) => {
                     write.write(packet.bytes.into()).await?
                 }
-                ServerSessionResult::RaisedEvent(evt) => {
-                    match evt {
-                        ServerSessionEvent::ConnectionRequested {
-                            request_id,
-                            app_name,
-                        } => {
-                            r.extend(
-                                session
-                                    .accept_request(request_id)
-                                    .map_err(|e| RtmpError::ServerSession(e.kind))?
-                            );
+                ServerSessionResult::RaisedEvent(evt) => match evt {
+                    ServerSessionEvent::ConnectionRequested {
+                        request_id,
+                        app_name: _,
+                    } => {
+                        r.extend(
+                            session
+                                .accept_request(request_id)
+                                .map_err(|e| RtmpError::ServerSession(e.kind))?,
+                        );
 
-                            debug!("Accepted connection request");
-                        }
-                        ServerSessionEvent::PublishStreamRequested {
-                            request_id,
-                            app_name,
-                            stream_key,
-                            mode: _,
-                        } => {
-                            stream_info = Some((request_id, app_name, stream_key));
-                        }
-                        _ => {}
+                        debug!("Accepted connection request");
                     }
-                }
+                    ServerSessionEvent::PublishStreamRequested {
+                        request_id,
+                        app_name,
+                        stream_key,
+                        mode: _,
+                    } => {
+                        stream_info = Some((request_id, app_name, stream_key));
+                    }
+                    _ => {}
+                },
                 ServerSessionResult::UnhandleableMessageReceived(_payload) => {}
             }
         }
