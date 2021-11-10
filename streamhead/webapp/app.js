@@ -560,6 +560,10 @@ class MseStream {
         let playbackRate = 1;
         if (buffered > target + 1) {
             playbackRate = 2;
+        } else if (buffered > target + 0.5) {
+            playbackRate = 1.09;
+        } else if (buffered > target + 0.25) {
+            playbackRate = 1.03;
         } else if (buffered > target + 0.1) {
             playbackRate = 1.01;
         } else if (buffered < target - 0.5) {
