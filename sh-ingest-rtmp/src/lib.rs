@@ -85,8 +85,8 @@ impl RtmpListener {
     }
 
     pub async fn accept(&self) -> Result<(RtmpRequest, String, String), RtmpError> {
-        let (socket, _addr) = self.listener.accept().await?;
-
+        let (socket, addr) = self.listener.accept().await?;
+        socket.set_nodelay(true)?;
 
         let (mut read, mut write) = split_tcp_filters(socket, 188 * 8);
         let (server_session, results, request_id, app, key) = process(&mut read, &mut write).await?;
