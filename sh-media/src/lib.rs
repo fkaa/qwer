@@ -422,7 +422,7 @@ impl MediaTime {
 }
 
 fn convert_timebase(time: u64, original: Fraction, new: Fraction) -> u64 {
-    time / original.denominator as u64 * new.denominator as u64
+    time * new.denominator as u64 / original.denominator as u64
 }
 
 #[test]

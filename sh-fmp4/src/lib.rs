@@ -292,7 +292,7 @@ fn get_track_for_audio_stream(stream: &Stream) -> TrackBox {
             0.into(),
         ),
         MediaBox::new(
-            MediaHeaderBox::new(48000, 0),
+            MediaHeaderBox::new(stream.timebase.denominator, 0),
             HandlerBox::new(*b"soun", String::from("Audio Handler")),
             MediaInformationBox::new(
                 MediaHeader::Sound(SoundMediaHeaderBox::new()),
