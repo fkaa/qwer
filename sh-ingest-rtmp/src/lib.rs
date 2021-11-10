@@ -37,6 +37,7 @@ use std::{
     cell::RefCell,
     collections::VecDeque,
     io::Cursor,
+    net::SocketAddr,
     sync::Arc,
     time::Instant,
 };
@@ -94,6 +95,7 @@ impl RtmpListener {
         let request = RtmpRequest {
             write,
             read,
+            addr,
             request_id,
             results,
             server_session
@@ -106,6 +108,7 @@ impl RtmpListener {
 pub struct RtmpRequest {
     write: TcpWriteFilter,
     read: TcpReadFilter,
+    addr: SocketAddr,
     request_id: u32,
     results: VecDeque<ServerSessionResult>,
     server_session: ServerSession,
@@ -125,6 +128,10 @@ impl RtmpRequest {
             server_session: self.server_session,
             results: self.results,
         })
+    }
+
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
     }
 }
 

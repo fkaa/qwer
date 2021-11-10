@@ -2,8 +2,11 @@
 
 use async_channel::{Receiver, Sender};
 
-use std::fmt;
-use std::sync::Arc;
+use std::{
+    fmt,
+    sync::Arc,
+    time::Instant,
+};
 
 use bytes::Bytes;
 
@@ -320,7 +323,7 @@ pub struct Frame {
     pub buffer: Bytes,
     pub stream: Stream,
 
-    pub received: std::time::Instant,
+    pub received: Instant,
 }
 
 impl fmt::Debug for Frame {
