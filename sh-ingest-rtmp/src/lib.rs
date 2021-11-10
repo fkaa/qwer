@@ -718,9 +718,3 @@ async fn process(
         r.extend(results);
     }
 }
-
-async fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
-    std::env::var("STREAM_KEY")
-        .map(|key| key == supplied_stream_key)
-        .unwrap_or(true)
-}
