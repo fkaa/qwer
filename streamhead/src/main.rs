@@ -81,6 +81,8 @@ async fn listen_rtmp(addr: String, repo: Arc<RwLock<StreamRepository>>) -> anyho
 
     loop {
         let (req, app, key) = listener.accept().await?;
+
+        info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
         if authenticate_rtmp_stream(&app, &key) {
             let repo = repo.clone();
             tokio::spawn(async move {
