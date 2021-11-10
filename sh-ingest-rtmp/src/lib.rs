@@ -42,6 +42,7 @@ use std::{
 };
 
 const RTMP_TIMEBASE: Fraction = Fraction::new(1, 1000);
+const RTMP_AAC_TIMEBASE: Fraction = Fraction::new(1, 48000);
 
 #[derive(Debug, thiserror::Error)]
 pub enum RtmpError {
@@ -216,7 +217,7 @@ impl RtmpReadFilter {
         self.audio_stream = Some(Stream {
             id: 1,
             codec: Arc::new(codec_info),
-            timebase: RTMP_TIMEBASE.clone(),
+            timebase: RTMP_AAC_TIMEBASE.clone(),
         });
 
         Ok(())
@@ -304,6 +305,8 @@ impl RtmpReadFilter {
             dts: None,
             timebase: RTMP_TIMEBASE.clone(),
         };
+
+        let time = time.in_base(RTMP_AAC_TIMEBASE);
 
         let frame = Frame {
             time,
