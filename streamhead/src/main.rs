@@ -81,14 +81,23 @@ async fn listen_rtmp(addr: String, repo: Arc<RwLock<StreamRepository>>) -> anyho
 
     loop {
         let (req, app, key) = listener.accept().await?;
-
-        let repo = repo.clone();
-        tokio::spawn(async move {
-            if let Err(e) = rtmp_ingest(app, req, repo).await {
-                error!("Error while ingesting RTMP: {}", e);
-            }
-        });
+        if authenticate_rtmp_stream(&app, &key) {
+            let repo = repo.clone();
+            tokio::spawn(async move {
+                if let Err(e) = rtmp_ingest(app, req, repo).await {
+                    error!("Error while ingesting RTMP: {}", e);
+                }
+            });
+        } else {
+            // TODO: disconnect properly?
+        }
     }
+}
+
+fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
+    std::env::var("STREAM_KEY")
+        .map(|key| key == supplied_stream_key)
+        .unwrap_or(true)
 }
 
 pub async fn websocket_video(
