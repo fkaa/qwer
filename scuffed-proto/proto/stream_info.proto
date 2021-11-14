@@ -1,0 +1,39 @@
+syntax = "proto3";
+package stream_info;
+
+service StreamInfo {
+  rpc Listen (StreamRequest) returns (stream StreamReply);
+}
+
+message StreamRequest {}
+
+message StreamReply {
+  message StreamExisting {
+    string name = 1;
+    uint32 viewers = 2;
+  }
+
+  message StreamStarted {
+    string name = 1;
+  }
+
+  message StreamStopped {
+    string name = 1;
+  }
+
+  message ViewerJoin {
+    string stream = 1;
+  }
+
+  message ViewerLeave {
+    string stream = 1;
+  }
+
+  oneof StreamType {
+    StreamExisting streamExisting = 1;
+    StreamStarted streamStarted = 2;
+    StreamStopped streamStopped = 3;
+    ViewerJoin viewerJoin = 4;
+    ViewerLeave viewerLeave = 5;
+  }
+}

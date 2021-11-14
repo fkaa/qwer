@@ -72,7 +72,7 @@ pub struct RtmpListener {
 }
 
 impl RtmpListener {
-    pub async fn bind(addr: String) -> Result<Self, RtmpError> {
+    pub async fn bind(addr: SocketAddr) -> Result<Self, RtmpError> {
         let listener = TcpListener::bind(addr).await?;
 
         Ok(RtmpListener { listener })

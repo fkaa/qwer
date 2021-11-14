@@ -5,6 +5,8 @@ members = [
     "sh-ingest-rtmp",
     "sh-transport-mse",
     "streamhead",
+    "scuffed-ingest",
+    "scuffed-proto",
 ]
 
 [patch.crates-io]

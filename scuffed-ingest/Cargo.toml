@@ -1,0 +1,32 @@
+[package]
+name = "scuffed-ingest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.2", features = ["ws"] }
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower = "0.4"
+flume = "0.10"
+
+async-trait = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+anyhow = "1.0"
+thiserror = "1.0"
+bytes = "1.0"
+log = "0.4"
+byteorder = "1.4"
+dotenv = "0.15.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing-subscriber = "*"
+tracing = "0.1"
+tonic = { version = "*", features = ["tls", "compression"] }
+
+sh-media = { path = "../sh-media" }
+sh-ingest-rtmp = { path = "../sh-ingest-rtmp" }
+sh-transport-mse = { path = "../sh-transport-mse" }
+scuffed-proto = { path = "../scuffed-proto" }
