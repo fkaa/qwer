@@ -169,11 +169,11 @@ async fn rtmp_write_task(
 
     debug!("Starting RTMP write task");
 
-    loop {
-        while let Some(pkt) = rtmp_rx.next().await {
-            write_filter.write(pkt.bytes.into()).await?;
-        }
+    while let Some(pkt) = rtmp_rx.next().await {
+        write_filter.write(pkt.bytes.into()).await?;
     }
+
+    Ok(())
 }
 
 impl RtmpReadFilter {
