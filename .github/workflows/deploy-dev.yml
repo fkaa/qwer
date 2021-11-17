@@ -18,4 +18,4 @@ jobs:
     - name: Deploy to dev
       env:
         DEPLOY_KEY: ${{ secrets.RELKOJ_KEY }}
-      run: curl --basic -u "$DEPLOY_KEY" -F "bin=@target/release/wip" https://dev.streamhead.mavulp.com/deploy
+      run: curl --basic -u "$DEPLOY_KEY" -F "bin=@target/release/streamhead" https://dev.streamhead.mavulp.com/deploy
