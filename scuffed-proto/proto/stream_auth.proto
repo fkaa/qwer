@@ -1,0 +1,31 @@
+syntax = "proto3";
+package stream_auth;
+
+service StreamAuthService {
+  rpc RequestStreamIngest (IngestRequest) returns (IngestRequestReply);
+  rpc RequestStreamJoin (StreamJoinRequest) returns (StreamJoinRequestReply);
+}
+
+message IngestRequest {
+  // Required. Destination of the ingest, should correspond to account
+  // name in scuffed.
+  string name = 1;
+
+  // Required. The stream key for the name field.
+  string streamKey = 2;
+}
+
+message IngestRequestReply {
+  // The id that scuffed sees as connected to the name field in the
+  // ingest request.
+  int32 streamerId = 1;
+
+  int32 streamSessionId = 2;
+}
+
+message StreamJoinRequest {
+  // The id of the stream to join.
+  string streamerId = 1;
+}
+
+message StreamJoinRequestReply {}

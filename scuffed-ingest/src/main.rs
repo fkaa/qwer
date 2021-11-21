@@ -4,31 +4,42 @@ use axum::{
         Extension, Path,
     },
     handler::get,
-    response::{Html, IntoResponse, sse::{Event, KeepAlive, Sse}},
+    response::IntoResponse,
     AddExtensionLayer, Router,
 };
-use tokio::sync::broadcast::{self, Sender, Receiver};
-use tokio_stream::wrappers::BroadcastStream;
 use futures::{future, Stream};
-use serde::{Serialize, Deserialize};
+use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio_stream::wrappers::BroadcastStream;
+use tonic::transport::{Channel, Endpoint};
 use tracing::*;
 
-use scuffed_proto::stream_info::{
-    stream_info_server::{StreamInfoServer, StreamInfo},
-    stream_reply::{
-        StreamExisting, StreamStarted, StreamStopped, ViewerJoin, ViewerLeave, StreamType,
+use scuffed_proto::{
+    stream_auth::{
+        stream_auth_service_client::StreamAuthServiceClient,
+        stream_auth_service_server::StreamAuthService, IngestRequest,
     },
-    StreamRequest,
-    StreamReply,
+    stream_info::{
+        stream_info_server::{StreamInfo, StreamInfoServer},
+        stream_reply::{
+            StreamExisting, StreamStarted, StreamStats, StreamStopped, StreamType, ViewerJoin,
+            ViewerLeave,
+        },
+        StreamReply, StreamRequest,
+    },
 };
-use sh_media::{FilterGraph, FrameAnalyzerFilter, MediaFrameQueueReceiver, MediaFrameQueue};
+use sh_media::{FilterGraph, FrameAnalyzerFilter, MediaFrameQueue, MediaFrameQueueReceiver};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock},
-    net::SocketAddr,
+    net::{SocketAddr, ToSocketAddrs},
     pin::Pin,
+    sync::{Arc, RwLock},
 };
+
+use crate::bandwidth_analyzer::BandwidthAnalyzerFilter;
+
+mod bandwidth_analyzer;
 
 pub struct StreamMetadata {
     queue: MediaFrameQueue,
@@ -37,13 +48,9 @@ pub struct StreamMetadata {
 
 impl StreamMetadata {
     pub fn new(queue: MediaFrameQueue) -> Self {
-        StreamMetadata {
-            queue,
-            viewers: 0,
-        }
+        StreamMetadata { queue, viewers: 0 }
     }
 }
-
 
 pub struct StreamInfoService {
     data: Arc<AppData>,
@@ -55,32 +62,37 @@ type ResponseStream = Pin<Box<dyn Stream<Item = Result<StreamReply, tonic::Statu
 impl StreamInfo for StreamInfoService {
     type ListenStream = ResponseStream;
 
-    async fn listen(&self, _request: tonic::Request<StreamRequest>) -> Result<tonic::Response<Self::ListenStream>, tonic::Status> {
+    async fn listen(
+        &self,
+        _request: tonic::Request<StreamRequest>,
+    ) -> Result<tonic::Response<Self::ListenStream>, tonic::Status> {
         use futures::StreamExt;
 
         debug!("listen RPC call");
 
-        let (events, stream) = self.data.stream_repo
+        let (events, stream) = self
+            .data
+            .stream_repo
             .write()
             .unwrap()
-            .subscribe();
+            .subscribe(self.data.stream_stat_sender.subscribe());
 
         let event_stream = futures::stream::iter(events).map(|e| Some(e));
 
-        let stream = event_stream
-            .chain(stream)
-            .map(|msg|
-                 msg.ok_or(tonic::Status::aborted("stream overflowed")).map(|msg| StreamReply {
-                     stream_type: Some(msg)
-                 })
-            );
+        let stream = event_stream.chain(stream).map(|msg| {
+            msg.ok_or(tonic::Status::aborted("stream overflowed"))
+                .map(|msg| StreamReply {
+                    stream_type: Some(msg),
+                })
+        });
 
         Ok(tonic::Response::new(Box::pin(stream)))
     }
 }
 
 pub struct StreamRepository {
-    pub streams: HashMap<String, StreamMetadata>,
+    pub stream_mapping: HashMap<String, i32>,
+    pub streams: HashMap<i32, StreamMetadata>,
     send: Sender<StreamType>,
     // channels: Vec<Sender<StreamEvent>>,
 }
@@ -90,47 +102,63 @@ impl StreamRepository {
         let (send, _) = broadcast::channel(512);
 
         StreamRepository {
+            stream_mapping: HashMap::new(),
             streams: HashMap::new(),
             send,
         }
     }
 
-    pub fn start_stream(&mut self, name: String, queue: MediaFrameQueue) {
+    pub fn start_stream(&mut self, stream_session_id: i32, stream: String, queue: MediaFrameQueue) {
         let meta = StreamMetadata::new(queue);
-        self.streams.insert(name.clone(), meta);
-        self.send_event(StreamType::StreamStarted(StreamStarted { name }));
+        self.streams.insert(stream_session_id, meta);
+        self.stream_mapping.insert(stream, stream_session_id);
+        self.send_event(StreamType::StreamStarted(StreamStarted { stream_session_id }));
     }
 
-    pub fn stop_stream(&mut self, name: String) {
-        self.streams.remove(&name);
-        self.send_event(StreamType::StreamStopped(StreamStopped { name }));
+    pub fn stop_stream(&mut self, stream_session_id: i32) {
+        self.streams.remove(&stream_session_id);
+        self.send_event(StreamType::StreamStopped(StreamStopped { stream_session_id }));
     }
 
-    pub fn viewer_join(&mut self, stream: String) {
-        if let Some(meta) = self.streams.get_mut(&stream) {
+    pub fn viewer_join(&mut self, stream_session_id: i32) {
+        if let Some(meta) = self.streams.get_mut(&stream_session_id) {
             meta.viewers += 1;
         }
-        self.send_event(StreamType::ViewerJoin(ViewerJoin { stream }));
+        self.send_event(StreamType::ViewerJoin(ViewerJoin { stream_session_id }));
     }
 
-    pub fn viewer_disconnect(&mut self, stream: String) {
-        if let Some(meta) = self.streams.get_mut(&stream) {
+    pub fn viewer_disconnect(&mut self, stream_session_id: i32) {
+        if let Some(meta) = self.streams.get_mut(&stream_session_id) {
             meta.viewers -= 1;
         }
-        self.send_event(StreamType::ViewerLeave(ViewerLeave { stream }));
+        self.send_event(StreamType::ViewerLeave(ViewerLeave { stream_session_id }));
     }
 
-    pub fn subscribe(&mut self) -> (Vec<StreamType>, impl Stream<Item=Option<StreamType>>) {
+    pub fn subscribe(
+        &mut self,
+        stream_stats: Receiver<StreamStats>,
+    ) -> (Vec<StreamType>, impl Stream<Item = Option<StreamType>>) {
         use futures::StreamExt;
 
-        let events = self.streams
+        let events = self
+            .streams
             .iter()
-            .map(|(name, meta)| StreamType::StreamExisting(StreamExisting { name: name.clone(), viewers: meta.viewers }))
+            .map(|(id, meta)| {
+                StreamType::StreamExisting(StreamExisting {
+                    stream_session_id: *id,
+                    viewers: meta.viewers,
+                })
+            })
             .collect::<Vec<_>>();
 
         let recv = self.send.subscribe();
 
-        (events, BroadcastStream::new(recv).map(|r| r.ok()))
+        let event_stream = BroadcastStream::new(recv).map(|r| r.ok());
+        let stream_stats =
+            BroadcastStream::new(stream_stats).map(|s| s.map(|s| StreamType::StreamStats(s)).ok());
+        let merged_stream = tokio_stream::StreamExt::merge(event_stream, stream_stats);
+
+        (events, merged_stream)
     }
 
     fn send_event(&self, event: StreamType) {
@@ -142,11 +170,15 @@ impl StreamRepository {
 #[derive(Clone)]
 pub struct AppData {
     pub stream_repo: Arc<RwLock<StreamRepository>>,
+    pub client: StreamAuthServiceClient<Channel>,
+    pub stream_stat_sender: Sender<StreamStats>,
 }
 
 async fn rtmp_ingest(
+    id: i32,
     app: String,
     request: sh_ingest_rtmp::RtmpRequest,
+    sender: Sender<StreamStats>,
     repo: Arc<RwLock<StreamRepository>>,
 ) -> anyhow::Result<()> {
     use sh_ingest_rtmp::RtmpReadFilter;
@@ -155,12 +187,13 @@ async fn rtmp_ingest(
     let queue = MediaFrameQueue::new();
     let rtmp_filter = RtmpReadFilter::new(session);
     let rtmp_analyzer = FrameAnalyzerFilter::read(Box::new(rtmp_filter));
+    let bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(rtmp_analyzer), id, sender);
 
-    let mut graph = FilterGraph::new(Box::new(rtmp_analyzer), Box::new(queue.clone()));
+    let mut graph = FilterGraph::new(Box::new(bw_analyzer), Box::new(queue.clone()));
 
     info!("Starting a stream at '{}'", app);
 
-    repo.write().unwrap().start_stream(app.clone(), queue);
+    repo.write().unwrap().start_stream(id, app.clone(), queue);
 
     if let Err(e) = graph.run().await {
         error!("Error while reading from RTMP stream: {}", e);
@@ -168,12 +201,16 @@ async fn rtmp_ingest(
 
     info!("Stopping a stream at '{}'", app);
 
-    repo.write().unwrap().stop_stream(app);
+    repo.write().unwrap().stop_stream(id);
 
     Ok(())
 }
 
-async fn listen_rtmp(addr: SocketAddr, repo: Arc<RwLock<StreamRepository>>) -> anyhow::Result<()> {
+async fn listen_rtmp(
+    addr: SocketAddr,
+    mut client: StreamAuthServiceClient<Channel>,
+    data: Arc<AppData>,
+) -> anyhow::Result<()> {
     use sh_ingest_rtmp::RtmpListener;
 
     info!("Listening for RTMP at {}", addr);
@@ -183,23 +220,37 @@ async fn listen_rtmp(addr: SocketAddr, repo: Arc<RwLock<StreamRepository>>) -> a
         let (req, app, key) = listener.accept().await?;
 
         info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
-        if authenticate_rtmp_stream(&app, &key) {
-            let repo = repo.clone();
-            tokio::spawn(async move {
-                if let Err(e) = rtmp_ingest(app, req, repo).await {
-                    error!("Error while ingesting RTMP: {}", e);
+
+        let repo = data.stream_repo.clone();
+        let sender = data.stream_stat_sender.clone();
+        let mut client = client.clone();
+        tokio::spawn(async move {
+            match authenticate_rtmp_stream(&mut client, &app, &key).await {
+                Ok(id) => {
+                    if let Err(e) = rtmp_ingest(id, app, req, sender, repo).await {
+                        error!("Error while ingesting RTMP: {}", e);
+                    }
                 }
-            });
-        } else {
-            // TODO: disconnect properly?
-        }
+                Err(e) => {
+                    error!("Failed to authenticate stream ingest: {}", e);
+                }
+            }
+        });
     }
 }
 
-fn authenticate_rtmp_stream(_app_name: &str, supplied_stream_key: &str) -> bool {
-    std::env::var("STREAM_KEY")
-        .map(|key| key == supplied_stream_key)
-        .unwrap_or(true)
+async fn authenticate_rtmp_stream(
+    client: &mut StreamAuthServiceClient<Channel>,
+    app_name: &str,
+    supplied_stream_key: &str,
+) -> anyhow::Result<i32> {
+    let request = IngestRequest {
+        name: app_name.into(),
+        stream_key: supplied_stream_key.into(),
+    };
+    let response = client.request_stream_ingest(request).await?;
+
+    Ok(response.into_inner().stream_session_id)
 }
 
 pub async fn websocket_video(
@@ -212,42 +263,46 @@ pub async fn websocket_video(
     ws.on_upgrade(move |socket| handle_websocket_video_response(socket, stream, data))
 }
 
-struct ViewGuard(String, Arc<AppData>);
+struct ViewGuard(i32, Arc<AppData>);
 
 impl ViewGuard {
-    pub fn attach(stream: String, data: Arc<AppData>) -> Option<(MediaFrameQueueReceiver, Self)> {
+    pub fn attach(stream: String, data: &Arc<AppData>) -> Option<(MediaFrameQueueReceiver, Self)> {
         let mut repo = data.stream_repo.write().unwrap();
 
-        let receiver = if let Some(meta) = repo.streams.get(&stream) {
-            Some(meta.queue.get_receiver())
-        } else {
-            None
-        };
+        let stream_id = *repo.stream_mapping.get(&stream)?;
 
-        if let Some(receiver) = receiver {
-            repo.viewer_join(stream.clone());
-            drop(repo);
+        let receiver = repo
+            .streams
+            .get(&stream_id)
+            .map(|s| s.queue.get_receiver())?;
 
-            let guard = ViewGuard(stream, data);
+        repo.viewer_join(stream_id);
+        drop(repo);
 
-            Some((receiver, guard))
-        } else {
-            None
-        }
+        let guard = ViewGuard(stream_id, data.clone());
+
+        Some((receiver, guard))
     }
 }
 
 impl Drop for ViewGuard {
     fn drop(&mut self) {
-        self.1.stream_repo.write().unwrap().viewer_disconnect(self.0.clone());
+        self.1
+            .stream_repo
+            .write()
+            .unwrap()
+            .viewer_disconnect(self.0.clone());
     }
 }
 
 async fn handle_websocket_video_response(socket: WebSocket, stream: String, data: Arc<AppData>) {
-    if let Some((mut queue_receiver, _guard)) = ViewGuard::attach(stream.clone(), data) {
+    if let Some((mut queue_receiver, guard)) = ViewGuard::attach(stream.clone(), &data) {
         debug!("Found a stream at {}", stream);
 
-        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut queue_receiver).await
+        let sender = data.stream_stat_sender.clone();
+        let mut bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, sender);
+
+        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut bw_analyzer).await
         {
             error!("{}", e);
         }
@@ -256,25 +311,58 @@ async fn handle_websocket_video_response(socket: WebSocket, stream: String, data
     }
 }
 
-async fn start(rtmp_addr: SocketAddr, web_addr: SocketAddr, rpc_addr: SocketAddr) -> anyhow::Result<()> {
+fn env(var: &str, default: &str) -> String {
+    std::env::var(var).unwrap_or_else(|_| default.into())
+}
+
+fn resolve_env_addr(var: &str, default: &str) -> SocketAddr {
+    std::env::var(var)
+        .unwrap_or_else(|_| default.into())
+        .to_socket_addrs()
+        .unwrap()
+        .next()
+        .expect(&format!("Failed to resolve {}", var))
+}
+
+async fn start() -> anyhow::Result<()> {
+    let ingest_rtmp_addr = resolve_env_addr("INGEST_RTMP_ADDR", "localhost:1935");
+    let ingest_web_addr = resolve_env_addr("INGEST_WEB_ADDR", "localhost:8080");
+    let ingest_rpc_addr = resolve_env_addr("INGEST_RPC_ADDR", "localhost:8081");
+
+    let scuffed_rpc_addr = env("SCUFFED_RPC_ADDR", "localhost:9082");
+
     let stream_repo = Arc::new(RwLock::new(StreamRepository::new()));
 
     let repo = stream_repo.clone();
-    tokio::spawn(async move {
-        if let Err(e) = listen_rtmp(rtmp_addr, repo).await {
-            error!("Error while listening on RTMP: {}", e);
-        }
+
+    let client_endpoint = Endpoint::from_shared(scuffed_rpc_addr)
+        .unwrap()
+        .connect_lazy();
+    let mut client = StreamAuthServiceClient::new(client_endpoint);
+
+    let (stream_stat_sender, _) = broadcast::channel(512);
+    let data = Arc::new(AppData {
+        stream_repo,
+        client: client.clone(),
+        stream_stat_sender,
     });
 
-    let data = Arc::new(AppData { stream_repo });
+    {
+        let data = data.clone();
+        tokio::spawn(async move {
+            if let Err(e) = listen_rtmp(ingest_rtmp_addr, client, data).await {
+                error!("Error while listening on RTMP: {}", e);
+            }
+        });
+    }
 
     let app = Router::new()
         .route("/transport/mse/:stream", get(websocket_video))
         .layer(AddExtensionLayer::new(data.clone()));
 
     let ws_task = tokio::spawn(async move {
-        debug!("Listening for WebSocket requests on {}", web_addr);
-        hyper::Server::bind(&web_addr)
+        debug!("Listening for WebSocket requests on {}", ingest_web_addr);
+        hyper::Server::bind(&ingest_web_addr)
             .tcp_nodelay(true)
             .serve(app.into_make_service())
             .await
@@ -286,11 +374,11 @@ async fn start(rtmp_addr: SocketAddr, web_addr: SocketAddr, rpc_addr: SocketAddr
     let service = StreamInfoService { data: data.clone() };
 
     let rpc_task = tokio::spawn(async move {
-        debug!("Listening for RPC calls on {}", rpc_addr);
+        debug!("Listening for RPC calls on {}", ingest_rpc_addr);
 
         tonic::transport::Server::builder()
             .add_service(StreamInfoServer::new(service))
-            .serve(rpc_addr)
+            .serve(ingest_rpc_addr)
             .await
             .unwrap();
 
@@ -305,31 +393,21 @@ async fn start(rtmp_addr: SocketAddr, web_addr: SocketAddr, rpc_addr: SocketAddr
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use std::net::ToSocketAddrs;
+    dotenv::dotenv().unwrap();
 
-    let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .finish();
+    let filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("debug"))
+        .unwrap();
+
+    let subscriber = FmtSubscriber::builder().with_env_filter(filter).finish();
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-
-    let _ = dotenv::dotenv();
-
-    let rtmp_addr = std::env::var("INGEST_RTMP_ADDR")
-        .unwrap_or_else(|_| "localhost:1935".into())
-        .to_socket_addrs()?.next().expect("Failed to resolve INGEST_RTMP_ADDR");
-    let web_addr = std::env::var("INGEST_WEB_ADDR")
-        .unwrap_or_else(|_| "localhost:8080".into())
-        .to_socket_addrs()?.next().expect("Failed to resolve INGEST_WEB_ADDR");
-    let rpc_addr = std::env::var("INGEST_RPC_ADDR")
-        .unwrap_or_else(|_| "localhost:8081".into())
-        .to_socket_addrs()?.next().expect("Failed to resolve INGEST_RPC_ADDR");
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { start(rtmp_addr, web_addr, rpc_addr).await })?;
+        .block_on(async { start().await })?;
 
     Ok(())
 }

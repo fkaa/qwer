@@ -5,28 +5,35 @@ service StreamInfo {
   rpc Listen (StreamRequest) returns (stream StreamReply);
 }
 
-message StreamRequest {}
+message StreamRequest {
+  uint32 statsIntervalSeconds = 1;
+}
 
 message StreamReply {
   message StreamExisting {
-    string name = 1;
+    int32 streamSessionId = 1;
     uint32 viewers = 2;
   }
 
   message StreamStarted {
-    string name = 1;
+    int32 streamSessionId = 1;
   }
 
   message StreamStopped {
-    string name = 1;
+    int32 streamSessionId = 1;
   }
 
   message ViewerJoin {
-    string stream = 1;
+    int32 streamSessionId = 1;
   }
 
   message ViewerLeave {
-    string stream = 1;
+    int32 streamSessionId = 1;
+  }
+
+  message StreamStats {
+    int32 streamSessionId = 1;
+    uint32 bytesSinceLastStats = 2;
   }
 
   oneof StreamType {
@@ -35,5 +42,6 @@ message StreamReply {
     StreamStopped streamStopped = 3;
     ViewerJoin viewerJoin = 4;
     ViewerLeave viewerLeave = 5;
+    StreamStats streamStats = 6;
   }
 }
