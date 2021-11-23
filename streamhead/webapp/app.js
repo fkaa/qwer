@@ -299,6 +299,7 @@ class MseStream {
     #hasInFlightUpdates;
     #targetBuffer;
     #videoStarted;
+    #previousBufferRemoval;
 
 
     #stats
@@ -316,6 +317,7 @@ class MseStream {
         this.target = 0.5;
         this.stats = new StreamStatistics(this);
         this.frames = [];
+        this.previousBufferRemoval = performance.now();
     }
 
     set targetBuffer(target) {
@@ -491,6 +493,16 @@ class MseStream {
 
         this.hasInFlightUpdates = false;
         this.feedFrame();
+
+        const removeLen = this.videoElement.currentTime - 60;
+        const now = performance.now();
+        if (!this.hasInFlightUpdates && removeLen > 0
+            && (now - this.previousBufferRemoval) > (10 * 1000)) {
+
+            this.mseBuffer.remove(0, removeLen);
+            this.previousBufferRemoval = now;
+            this.hasInFlightUpdates = true;
+        }
     }
 
     webSocketSegment(segment) {
