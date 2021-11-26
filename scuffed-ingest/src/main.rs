@@ -208,7 +208,7 @@ async fn rtmp_ingest(
 
 async fn listen_rtmp(
     addr: SocketAddr,
-    mut client: StreamAuthServiceClient<Channel>,
+    client: StreamAuthServiceClient<Channel>,
     data: Arc<AppData>,
 ) -> anyhow::Result<()> {
     use sh_ingest_rtmp::RtmpListener;
@@ -296,7 +296,7 @@ impl Drop for ViewGuard {
 }
 
 async fn handle_websocket_video_response(socket: WebSocket, stream: String, data: Arc<AppData>) {
-    if let Some((mut queue_receiver, guard)) = ViewGuard::attach(stream.clone(), &data) {
+    if let Some((queue_receiver, guard)) = ViewGuard::attach(stream.clone(), &data) {
         debug!("Found a stream at {}", stream);
 
         let sender = data.stream_stat_sender.clone();
@@ -333,12 +333,12 @@ async fn start() -> anyhow::Result<()> {
 
     let stream_repo = Arc::new(RwLock::new(StreamRepository::new()));
 
-    let repo = stream_repo.clone();
+    let _repo = stream_repo.clone();
 
     let client_endpoint = Endpoint::from_shared(scuffed_rpc_addr)
         .unwrap()
         .connect_lazy();
-    let mut client = StreamAuthServiceClient::new(client_endpoint);
+    let client = StreamAuthServiceClient::new(client_endpoint);
 
     let (stream_stat_sender, _) = broadcast::channel(512);
     let data = Arc::new(AppData {

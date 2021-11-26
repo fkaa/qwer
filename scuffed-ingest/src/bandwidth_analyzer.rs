@@ -1,9 +1,9 @@
 use scuffed_proto::stream_info::stream_reply::StreamStats;
-use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio::sync::broadcast::{Sender};
 
 use std::time::{Duration, Instant};
 
-use sh_media::{Frame, FrameReadFilter, FrameWriteFilter, MediaTime, Stream};
+use sh_media::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
 
 pub struct BandwidthAnalyzerFilter {
     filter: Box<dyn FrameReadFilter + Send + Unpin>,
