@@ -64,7 +64,13 @@ async fn listen_rtmp(addr: String, repo: Arc<RwLock<StreamRepository>>) -> anyho
     let listener = RtmpListener::bind(addr).await?;
 
     loop {
-        let (req, app, key) = listener.accept().await?;
+        let (req, app, key) = match listener.accept().await {
+            Ok((r, a, k)) => (r, a, k),
+            Err(e) => {
+                warn!("Error while accepting RTMP connection: {}", e);
+                continue;
+            }
+        };
 
         info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
         if authenticate_rtmp_stream(&app, &key) {
