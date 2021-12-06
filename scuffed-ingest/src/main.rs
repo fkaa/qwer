@@ -1,13 +1,9 @@
-use axum::{
-    extract::{
+use axum::{AddExtensionLayer, Router, body::{self, BoxBody}, extract::{
         ws::{WebSocket, WebSocketUpgrade},
         Extension, Path,
-    },
-    handler::get,
-    response::IntoResponse,
-    AddExtensionLayer, Router,
-};
+    }, handler::get, response::IntoResponse};
 use futures::{future, Stream};
+use hyper::{Response, StatusCode};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::transport::{Channel, Endpoint};
@@ -27,7 +23,7 @@ use scuffed_proto::{
         StreamReply, StreamRequest,
     },
 };
-use sh_media::{FilterGraph, FrameAnalyzerFilter, MediaFrameQueue, MediaFrameQueueReceiver};
+use sh_media::{FilterGraph, Frame, FrameAnalyzerFilter, MediaFrameQueue, MediaFrameQueueReceiver};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use std::{
@@ -37,18 +33,20 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::bandwidth_analyzer::BandwidthAnalyzerFilter;
+use crate::{bandwidth_analyzer::BandwidthAnalyzerFilter, snapshot_provider::SnapshotProviderFilter};
 
 mod bandwidth_analyzer;
+mod snapshot_provider;
 
 pub struct StreamMetadata {
     queue: MediaFrameQueue,
     viewers: u32,
+    snapshot: Arc<RwLock<Option<Frame>>>,
 }
 
 impl StreamMetadata {
-    pub fn new(queue: MediaFrameQueue) -> Self {
-        StreamMetadata { queue, viewers: 0 }
+    pub fn new(queue: MediaFrameQueue, snapshot: Arc<RwLock<Option<Frame>>>) -> Self {
+        StreamMetadata { queue, viewers: 0, snapshot, }
     }
 }
 
@@ -108,16 +106,20 @@ impl StreamRepository {
         }
     }
 
-    pub fn start_stream(&mut self, stream_session_id: i32, stream: String, queue: MediaFrameQueue) {
-        let meta = StreamMetadata::new(queue);
+    pub fn start_stream(&mut self, stream_session_id: i32, stream: String, queue: MediaFrameQueue, snapshot: Arc<RwLock<Option<Frame>>>) {
+        let meta = StreamMetadata::new(queue, snapshot);
         self.streams.insert(stream_session_id, meta);
         self.stream_mapping.insert(stream, stream_session_id);
-        self.send_event(StreamType::StreamStarted(StreamStarted { stream_session_id }));
+        self.send_event(StreamType::StreamStarted(StreamStarted {
+            stream_session_id,
+        }));
     }
 
     pub fn stop_stream(&mut self, stream_session_id: i32) {
         self.streams.remove(&stream_session_id);
-        self.send_event(StreamType::StreamStopped(StreamStopped { stream_session_id }));
+        self.send_event(StreamType::StreamStopped(StreamStopped {
+            stream_session_id,
+        }));
     }
 
     pub fn viewer_join(&mut self, stream_session_id: i32) {
@@ -189,11 +191,14 @@ async fn rtmp_ingest(
     let rtmp_analyzer = FrameAnalyzerFilter::read(Box::new(rtmp_filter));
     let bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(rtmp_analyzer), id, sender);
 
-    let mut graph = FilterGraph::new(Box::new(bw_analyzer), Box::new(queue.clone()));
+    let snapshot = Arc::new(RwLock::new(None));
+    let snapshot_provider = SnapshotProviderFilter::new(Box::new(bw_analyzer), snapshot.clone());
+
+    let mut graph = FilterGraph::new(Box::new(snapshot_provider), Box::new(queue.clone()));
 
     info!("Starting a stream at '{}'", app);
 
-    repo.write().unwrap().start_stream(id, app.clone(), queue);
+    repo.write().unwrap().start_stream(id, app.clone(), queue, snapshot);
 
     if let Err(e) = graph.run().await {
         error!("Error while reading from RTMP stream: {}", e);
@@ -300,14 +305,47 @@ async fn handle_websocket_video_response(socket: WebSocket, stream: String, data
         debug!("Found a stream at {}", stream);
 
         let sender = data.stream_stat_sender.clone();
-        let mut bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, sender);
+        let mut bw_analyzer =
+            BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, sender);
 
-        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut bw_analyzer).await
-        {
+        if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut bw_analyzer).await {
             error!("{}", e);
         }
     } else {
         debug!("Did not find a stream at {}", stream);
+    }
+}
+
+pub async fn snapshot(
+    Path(stream): Path<String>,
+    Extension(data): Extension<Arc<AppData>>,
+) -> impl IntoResponse {
+    debug!("Received snapshot request for '{}'", stream);
+
+    let repo = data.stream_repo.write().unwrap();
+
+    let stream_id = repo.stream_mapping.get(&stream);
+    let meta = stream_id.and_then(|id| repo.streams.get(id));
+
+    if let Some(frame) = meta.and_then(|m| m.snapshot.read().unwrap().clone()) {
+        match sh_fmp4::single_frame_fmp4(frame) {
+            Ok(bytes) => {
+                Response::builder()
+                    .header("Content-Type", "video/mp4")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .status(StatusCode::OK)
+                    .body(body::Full::from(bytes)).unwrap()
+            },
+            Err(e) => {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(body::Full::from(format!("Failed to get snapshot: {}", e))).unwrap()
+            }
+        }
+    } else {
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(body::Full::from("Failed to find snapshot")).unwrap()
     }
 }
 
@@ -358,6 +396,7 @@ async fn start() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/transport/mse/:stream", get(websocket_video))
+        .route("/snapshot/:stream", get(snapshot))
         .layer(AddExtensionLayer::new(data.clone()));
 
     let ws_task = tokio::spawn(async move {

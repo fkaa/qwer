@@ -29,4 +29,5 @@ tonic = { version = "*", features = ["tls", "compression"] }
 sh-media = { path = "../sh-media" }
 sh-ingest-rtmp = { path = "../sh-ingest-rtmp" }
 sh-transport-mse = { path = "../sh-transport-mse" }
+sh-fmp4 = { path = "../sh-fmp4" }
 scuffed-proto = { path = "../scuffed-proto" }

@@ -44,17 +44,88 @@ use sh_media::{
     ByteWriteFilter2, CodecTypeInfo, Frame, FrameDependency, FrameWriteFilter, MediaTime, Stream,
     VideoCodecSpecificInfo,
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, io::Write};
 
 use std::collections::HashMap;
 
 use tracing::*;
+
+pub fn single_frame_fmp4(frame: Frame) -> anyhow::Result<Vec<u8>> {
+    let mut buffer = Vec::with_capacity(frame.buffer.len());
+
+    write_preamble(&frame.stream, None, &mut buffer)?;
+
+    let duration = 1800;
+
+    let mut moof = MovieFragmentBox::new(
+        MovieFragmentHeaderBox::new(1),
+        TrackFragmentBox::new(
+            TrackFragmentHeaderBox::new(1, None, None, None, None, None, false, true),
+            vec![TrackFragmentRunBox::new(
+                Some(0),
+                None,
+                vec![TrackFragmentSample {
+                    duration: Some(duration as _),
+                    size: Some(frame.buffer.len() as _),
+                    flags: None,
+                    composition_time_offset: None,
+                }],
+            )],
+            Some(TrackFragmentBaseMediaDecodeTimeBox::new(
+                0,
+            )),
+        ),
+    );
+
+    // patch data offset to point to contents of our 'mdat'
+    moof.traf.track_runs[0].data_offset = Some(moof.total_size() as i32 + 8);
+
+    let mdat = MediaDataBox::new(Cow::Borrowed(&frame.buffer));
+
+    moof.write(&mut buffer)?;
+    mdat.write(&mut buffer)?;
+
+    Ok(buffer)
+}
 
 pub struct FragmentedMp4WriteFilter {
     target: Box<dyn ByteWriteFilter2 + Send + Unpin>,
     start_times: HashMap<u32, MediaTime>,
     prev_times: HashMap<u32, MediaTime>,
     sequence_id: u32,
+}
+
+fn write_preamble(
+    video: &Stream,
+    audio: Option<&Stream>,
+    dest: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let ftyp = FileTypeBox::new(*b"isom", 0, Cow::Owned(vec![*b"isom", *b"iso5", *b"dash"]));
+
+    warn!("Timescale: {:?}", video.timebase);
+
+    let mut tracks = vec![get_track_for_video_stream(video)];
+    if let Some(audio) = audio {
+        tracks.push(get_track_for_audio_stream(audio))
+    }
+
+    let moov = MovieBox::new(
+        MovieHeaderBox::new(video.timebase.denominator, 0),
+        Some(MovieExtendsBox::new(
+            MovieExtendsHeaderBox::new(0),
+            vec![
+                // one per track
+                TrackExtendsBox::new(1, 1, 0, 0, 0),
+                TrackExtendsBox::new(2, 1, 0, 0, 0),
+            ],
+        )),
+        tracks,
+    );
+
+    ftyp.write(dest)?;
+    moov.write(dest)?;
+
+    Ok(())
 }
 
 impl FragmentedMp4WriteFilter {
@@ -72,35 +143,10 @@ impl FragmentedMp4WriteFilter {
         video: &Stream,
         audio: Option<&Stream>,
     ) -> anyhow::Result<()> {
-        let ftyp = FileTypeBox::new(*b"isom", 0, Cow::Owned(vec![*b"isom", *b"iso5", *b"dash"]));
-
-        warn!("Timescale: {:?}", video.timebase);
-
-        let mut tracks = vec![get_track_for_video_stream(video)];
-        if let Some(audio) = audio {
-            tracks.push(get_track_for_audio_stream(audio))
-        }
-
-        let moov = MovieBox::new(
-            MovieHeaderBox::new(video.timebase.denominator, 0),
-            Some(MovieExtendsBox::new(
-                MovieExtendsHeaderBox::new(0),
-                vec![
-                    // one per track
-                    TrackExtendsBox::new(1, 1, 0, 0, 0),
-                    TrackExtendsBox::new(2, 1, 0, 0, 0),
-                ],
-            )),
-            tracks,
-        );
+        let mut v = Vec::new();
+        write_preamble(video, audio, &mut v)?;
 
         let mut bytes = bytes::BytesMut::with_capacity(1024);
-        // FIXME use bytes or vec not both
-        let mut v = Vec::with_capacity(1024);
-
-        ftyp.write(&mut v)?;
-        moov.write(&mut v)?;
-
         bytes.extend(v);
         self.target.write(bytes.freeze()).await?;
 

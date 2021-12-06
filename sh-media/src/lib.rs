@@ -322,6 +322,12 @@ pub struct Frame {
     pub received: Instant,
 }
 
+impl Frame {
+    pub fn is_keyframe(&self) -> bool {
+        matches!(self.dependency, FrameDependency::None)
+    }
+}
+
 impl fmt::Debug for Frame {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Frame")
