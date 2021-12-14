@@ -40,6 +40,7 @@ use av_mp4::boxes::{
     vmhd::VideoMediaHeaderBox,
 };
 
+use bytes::{BytesMut, BufMut};
 use sh_media::{
     ByteWriteFilter2, CodecTypeInfo, Frame, FrameDependency, FrameWriteFilter, MediaTime, Stream,
     VideoCodecSpecificInfo,
@@ -143,12 +144,11 @@ impl FragmentedMp4WriteFilter {
         video: &Stream,
         audio: Option<&Stream>,
     ) -> anyhow::Result<()> {
-        let mut v = Vec::new();
-        write_preamble(video, audio, &mut v)?;
+        let bytes = BytesMut::with_capacity(1024);
+        let mut writer = bytes.writer();
+        write_preamble(video, audio, &mut writer)?;
 
-        let mut bytes = bytes::BytesMut::with_capacity(1024);
-        bytes.extend(v);
-        self.target.write(bytes.freeze()).await?;
+        self.target.write(writer.into_inner().freeze()).await?;
 
         Ok(())
     }
@@ -203,15 +203,13 @@ impl FragmentedMp4WriteFilter {
 
         let mdat = MediaDataBox::new(Cow::Borrowed(&frame.buffer));
 
-        let mut bytes = bytes::BytesMut::with_capacity(1024);
-        // FIXME use bytes or vec not both
-        let mut v = Vec::with_capacity(1024);
+        let bytes = BytesMut::with_capacity(frame.buffer.len() + 1024);
+        let mut writer = bytes.writer();
 
-        moof.write(&mut v)?;
-        mdat.write(&mut v)?;
+        moof.write(&mut writer)?;
+        mdat.write(&mut writer)?;
 
-        bytes.extend(v);
-        self.target.write(bytes.freeze()).await?;
+        self.target.write(writer.into_inner().freeze()).await?;
 
         self.sequence_id += 1;
 
