@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/css/mystyles.css">
+    <link rel="shortcut icon" href="/static/favicon.png">
+    <title>Create account - qwer.ee</title>
+  </head>
+  <body>
+    <section class="section landing-section">
+      <div class="container landing-content">
+          <p class="title is-1">Create account</p>
+
+          <form action="/account/activate" method="post">
+            <label class="label">Name</label>
+            <input class="input" type="text" name="account_name">
+
+            <label class="label">Email</label>
+            <input class="input" type="email" value="{{ email }}" name="email">
+
+            <label class="label">Password</label>
+            <input class="input" type="password" name="password">
+
+            <label class="label">Repeat Password</label>
+            <input class="input" type="password" name="repeat-password">
+
+            <input type="hidden" name="secret" value="{{ secret }}">
+
+            <button type="submit" class="button is-success">
+              Create
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero is-primary is-fullheight">
+      <div class="hero-body">
+        <div class="container">
+      </div>
+    </section>
+  </body>
+</html>

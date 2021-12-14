@@ -1,0 +1,37 @@
+[Unit]
+Description=qwer.ee website
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qwer
+Restart=on-failure
+User=qwer
+Group=qwer
+DynamicUser=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+SecureBits=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=false
+PrivateUsers=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+MemoryDenyWriteExecute=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

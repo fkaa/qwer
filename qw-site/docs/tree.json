@@ -1,0 +1,14 @@
+[
+    { "title": "What is qwer.ee?", "src": "intro.md", "path": "index" },
+    {
+        "title": "Streaming",
+        "path": "streaming",
+        "children": [
+            {
+                "title": "Introduction to streaming",
+                "src": "streaming/intro.md",
+                "path": "streaming/intro"
+            }
+        ]
+    }
+]

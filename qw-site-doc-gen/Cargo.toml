@@ -1,0 +1,12 @@
+[package]
+edition = "2021"
+name = "qw-doc-gen"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0"
+askama = "0.10"
+comrak = "0.12"
+dotenv = "0.15"
+serde = "1.0"
+serde_json = "1.0"

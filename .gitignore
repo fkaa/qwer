@@ -1,4 +1,14 @@
 /target
+/artifacts
+/qw-site/docs/output
+**/output
+**/#*
+**/.#*
+**/node_modules
+**/dist
+.env
+qwer
+qwer-ingest
 *.mp4
 *.fmp4
 *.h264

@@ -1,0 +1,15 @@
+.env
+artifacts/
+**/node_modules
+node_modules/
+tests/
+Dockerfile
+scripts/
+migrations/
+
+target/debug/
+target/release/
+target/production/
+target/x86_64-unknown-linux-musl/release/build/
+target/x86_64-unknown-linux-musl/release/deps/
+target/x86_64-unknown-linux-musl/release/incremental/

@@ -1,0 +1,45 @@
+[package]
+edition = "2021"
+name = "qwer"
+version = "0.1.0"
+build = "build.rs"
+license = "AGPL-3.0-only"
+description = ""
+
+[dependencies]
+axum = { version = "0.4", features = ["headers"] }
+askama = "0.10"
+hyper = "*"
+anyhow = "*"
+http = "*"
+tokio = { version = "1.1", features = ["full"] }
+tower-http = { version = "0.1", features = ["fs", "trace", "auth"] }
+tonic = { version = "*", features = ["tls", "compression"] }
+
+async-trait = "*"
+futures = "*"
+tracing = "0.1"
+tracing-subscriber = { version="0.3", features = ["env-filter"] }
+
+argh = "0.1"
+dotenv = "*"
+time = "0.3"
+
+backoff = { version = "0.3", features = ["tokio"] }
+tokio-postgres = { version = "0.7" }
+bb8 = { version = "0.7" }
+bb8-postgres = { version = "0.7" }
+refinery = { version = "0.7", features = ["tokio-postgres"] }
+# sqlx = { version = "0.5", features = ["time", "sqlite", "runtime-tokio-rustls"] }
+qw-proto = { path = "../qw-proto" }
+lettre = { version = "0.10.0-rc.4", default-features = false, features = ["smtp-transport", "hostname", "builder", "pool", "rustls-tls"] }
+fastrand = "1.5.0"
+ascii = "1.0.0"
+serde = "1.0.130"
+argon2 = { version = "0.3.1", features = ["std"] }
+cookie = { version = "0.15.1", features = ["secure", "percent-encode"] }
+rand = "0.8"
+headers = "0.3.5"
+
+[build-dependencies]
+qw-doc-gen = { path = "../qw-site-doc-gen" }

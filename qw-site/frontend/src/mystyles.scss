@@ -1,0 +1,309 @@
+@charset "utf-8";
+
+$chiffon: #fffacd;
+$green: #4f8576;
+$purple: #a85266;
+$dark-purple: #302f51;
+$blue: #a9ded0;
+$orange: #F3B562;
+$red: #e0755f;
+
+$gray: #4a5050;
+$dark-gray: #333439;
+
+
+$background: $chiffon;
+$link: $dark-purple;
+$primary: $green;
+$warning: $orange;
+
+// Set your brand colors
+$purple: #8A4D76;
+$pink: #FA7C91;
+$brown: #757763;
+$beige-light: #D0D1CD;
+$beige-lighter: #EFF0EB;
+
+$lg: #e6f7ef;
+$play-color: #66ea87;
+$stop-color: #ea6c66;
+$dark-stream-bg: #222;
+
+$family-sans-serif: "Balsamiq Sans", sans-serif;
+
+$card-radius: 0.5rem;
+
+@mixin linear-gradient($direction, $color-stops...) {
+  // Direction has been omitted and happens to be a color-stop
+  @if is-direction($direction) == false {
+    $color-stops: $direction, $color-stops;
+    $direction: 180deg;
+  }
+
+  background: nth(nth($color-stops, 1), 1);
+  background: linear-gradient($direction, $color-stops);
+}
+
+@font-face {
+    font-family: 'Balsamiq Sans';
+    font-style: normal;
+    font-weight: 400;
+    src: url('../static_resources/BalsamiqSans-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Balsamiq Sans';
+    font-style: normal;
+    font-weight: 700;
+    src: url('../static_resources/BalsamiqSans-Bold.ttf') format('truetype');
+}
+
+.landing-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.landing-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.flex-center {
+    justify-content: center !important;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.overlay-text {
+    font-weight: bold;
+    font-size: 2em;
+    color: $lg;
+    /*padding: 2px 10px;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 4px;*/
+}
+
+.frugal-image {
+    image-rendering: crisp-edges;
+    align-self: center;
+}
+
+.overlay-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+}
+
+.overlay-inner-container {
+    margin: 0;
+    position: absolute;
+}
+
+.control-item {
+    align-items: center;
+    display: flex;
+    padding: 0.5em;
+}
+
+.force-navbar {
+    align-items: stretch !important;
+    display: flex !important;
+    justify-content: flex-start;
+    margin-right: auto;
+}
+
+.bg-grad {
+    @include linear-gradient(to top, #cfd9dfdd 0%, #e2ebf0dd 100%);
+    background-opacity: 0.8;
+}
+
+.fullscreen {
+    height: 100%;
+}
+
+.fullscreen html, body, .stream-player {
+    height: 100%;
+}
+
+html, body {
+    height: 100%;
+    background-color: $chiffon;
+}
+
+.stream-nav-header {
+    margin: 20px;
+    border-radius: 4px;
+}
+
+.stream-nav-controls {
+    box-shadow: 0px 10px 20px 0px rgba(0,0,0,0.35);
+    margin: 0 auto 45px auto;
+    border-radius: 4px;
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translate(-50%, 0);
+}
+
+.progress-container {
+    width: 16em;
+    position: relative;
+}
+
+.navbar-menu {
+    flex-grow: 1 !important;
+    flex-shrink: 0 !important;
+}
+
+.stream {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+}
+
+.stream-progress {
+    position: absolute;
+
+    transform: translate(0, -50%);
+    top:0;
+    left:0;
+    margin: 0 !important;
+}
+
+.stream-progress-slider {
+    position: absolute;
+
+    transform: translate(0, -50%);
+    top:0;
+    left:0;
+    margin: 0 !important;
+}
+
+input[type="range"].stream-progress-slider::-moz-progress-bar {
+    transition: 0.25s width;
+}
+
+input[type="range"].stream-progress-slider::-moz-range-track {
+    background: none !important;
+}
+
+input[type="range"].stream-progress-slider::-moz-range-thumb {
+    width: 0.5rem !important;
+}
+
+input[type="range"].volume-slider::-moz-range-thumb {
+    height: 0.5rem !important;
+    margin: 0 !important;
+}
+
+input[type="range"].volume-slider {
+    margin: 0 !important;
+}
+
+.stream-card-parent {
+    text-align: center;
+}
+
+.stream-poster {
+    border: 2px solid #000;
+    border-radius: 4px;
+}
+
+.stream-card {
+    display: inline-block;
+    width: 180px;
+    max-width: 180px;
+    max-height: 300px;
+    border-radius: 4px;
+    padding: 0.5em;
+}
+
+.stream-card:hover {
+    background-color: #e6e9f7;
+}
+
+.stream-player {
+    width: 100%;
+    background: $dark-stream-bg;
+}
+
+.volume-container {
+    min-width: 0 !important;
+}
+
+.play-container {
+    display: inline-block;
+    vertical-align: middle;
+    margin:  0 4px;
+}
+
+.play-stop-box {
+    position:fixed;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 8px 0px 8px 16px;
+  border-color: transparent transparent transparent $play-color;
+  transition: all 100ms ease-in-out;
+}
+
+.playing {
+  border-width:0px 0px 0px 16px;
+  border-color: transparent transparent transparent $stop-color;
+}
+
+// $gradient: linear-gradient(135deg, #8BC6EC 0%, #9599E2 100%);
+
+// Update Bulma's global variables
+
+// Update some of Bulma's component variables
+// $body-background-color: $beige-lighter;
+// $control-border-width: 2px;
+// $input-border-color: transparent;
+// $input-shadow: none;
+
+// Import only what you need from Bulma
+@import "../node_modules/bulma/sass/utilities/_all.sass";
+@import "../node_modules/bulma/sass/base/_all.sass";
+@import "../node_modules/bulma/sass/grid/columns.sass";
+@import "../node_modules/bulma/sass/elements/button.sass";
+@import "../node_modules/bulma/sass/elements/container.sass";
+@import "../node_modules/bulma/sass/elements/content.sass";
+@import "../node_modules/bulma/sass/elements/title.sass";
+@import "../node_modules/bulma/sass/elements/progress.sass";
+@import "../node_modules/bulma/sass/elements/table.sass";
+@import "../node_modules/bulma/sass/form/_all.sass";
+@import "../node_modules/bulma/sass/components/navbar.sass";
+@import "../node_modules/bulma/sass/components/menu.sass";
+@import "../node_modules/bulma/sass/components/level.sass";
+@import "../node_modules/bulma/sass/components/dropdown.sass";
+@import "../node_modules/bulma/sass/components/card.sass";
+@import "../node_modules/bulma/sass/layout/hero.sass";
+@import "../node_modules/bulma/sass/layout/section.sass";
+@import "../node_modules/bulma/sass/layout/footer.sass";
+@import "../node_modules/bulma/sass/helpers/typography.sass";
+@import "../node_modules/bulma/sass/helpers/spacing.sass";
+
+$slider-radius: 2;
+
+//@import "../node_modules/bulma/bulma.sass";
+@import "bulma-slider";
+@import "bulma-switch";
+
+// @import "./fa/fontawesome.scss";
+// @import "./fa/solid.scss";
+

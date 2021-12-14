@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html class="fullscreen" lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+        content="
+        img-src 'self' blob: data:;
+        media-src 'self' blob:;
+        default-src * 'self' 'unsafe-inline' data:">
+    <link rel="stylesheet" href="/static/css/mystyles.css">
+    <link rel="shortcut icon" href="/static/favicon.png">
+    <title>{{ stream }} - qwer.ee</title>
+  </head>
+  <body>
+    <figure id="video-container" class="image stream-player">
+      <video id="stream" class="stream">
+        Not supported!
+      </video>
+    </figure>
+
+    <div id="overlay" class="overlay-container hidden">
+      <h1 class="overlay-text">Enable autoplay or press play to start</h1>
+    </div>
+
+    <div class="stream-nav-controls bg-grad">
+      <div class="force-navbar">
+        <div class="control-item">
+          <a id="play-stop-button" class="button is-success is-light">
+            <span class="icon-text">
+              <div class="play-container">
+                <div id="play-stop-box" class="play-stop-box"></div>
+              </div>
+            </span>
+          </a>
+        </div>
+
+        <div class="control-item">
+          <div class="progress-container">
+            <progress id="video-progress" class="stream-progress progress is-small is-success" value="0" max="100"></progress>
+            <input id="target-buffer" class="stream-progress-slider slider is-fullwidth is-large" step="1" min="0" max="100" type="range">
+          </div>
+        </div>
+
+
+        <div class="control-item">
+          <div class="dropdown is-up is-hoverable">
+            <div class="dropdown-trigger">
+              <button class="button is-info is-light" aria-haspopup="true" aria-controls="dropdown-menu4">
+                <span class="icon is-small">
+                  <i class="fas fa-volume-up" aria-hidden="true"></i>
+                </span>
+              </button>
+            </div>
+            <div class="dropdown-menu volume-container" id="dropdown-menu4" role="menu">
+              <div class="dropdown-content">
+                <div class="dropdown-item">
+
+                  <input id="volume-slider" class="volume-slider slider is-medium" step="1" min="0" max="100" value="50" type="range" orient="vertical">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dropdown is-up is-hoverable ml-1">
+            <div class="dropdown-trigger">
+              <button class="button is-info is-light" aria-haspopup="true" aria-controls="dropdown-menu4">
+                <span class="icon is-small">
+                  <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
+                </span>
+              </button>
+            </div>
+            <div class="dropdown-menu" id="dropdown-menu4" role="menu">
+              <div class="dropdown-content">
+                <div class="dropdown-item">
+                  <div class="field">
+                    <input id="debugInfo" type="checkbox" name="debugInfo" class="switch is-success is-light" checked="checked">
+                    <label for="debugInfo">Show debug info</label>
+                  </div>
+                </div>
+
+                <div class="dropdown-item">
+                  <div class="field">
+                    <input id="autoBuffer" type="checkbox" name="autoBuffer" class="switch is-success is-light" checked="checked">
+                    <label for="autoBuffer">Automatic buffer</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      RTMP_MSE_STREAM="wss://{{ transport_address }}/transport/mse/{{ stream }}";
+    </script>
+    <script src="/static/js/index.bundle.js"></script>
+  </body>
+</html>

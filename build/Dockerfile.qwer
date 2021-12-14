@@ -1,0 +1,10 @@
+FROM fedora:34
+
+WORKDIR /app
+
+RUN dnf -y install ripgrep
+RUN dnf -y groupinstall "RPM Development Tools"
+
+# COPY . .
+
+ENTRYPOINT ["./build/build.sh"]

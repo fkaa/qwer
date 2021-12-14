@@ -4,9 +4,10 @@ members = [
     "sh-fmp4",
     "sh-ingest-rtmp",
     "sh-transport-mse",
-    "streamhead",
-    "scuffed-ingest",
-    "scuffed-proto",
+    "qw-site-doc-gen",
+    "qw-site",
+    "qw-ingest",
+    "qw-proto",
 ]
 
 [patch.crates-io]
