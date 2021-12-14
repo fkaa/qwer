@@ -106,10 +106,11 @@ pub async fn get_stream_sessions(
             "
 SELECT id, start_time, stop_time FROM stream_session
 WHERE
-start_time >= $1 AND
-(stop_time <= $2 OR stop_time IS NULL)
+account_id = $1 AND
+start_time >= $2 AND
+(stop_time <= $3 OR stop_time IS NULL)
         ",
-            &[&start, &end],
+            &[&account, &start, &end],
         )
         .await?;
 

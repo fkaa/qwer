@@ -41,10 +41,10 @@
               name: "{{ entry.account_name }}",
               samples: [
                   {% for sample in entry.data %}
-                  [new Date({{ sample.time }} * 1000), {% match sample.bytes %} {% when Some with (bytes) %} {{ bytes }} {% when None %} null {% endmatch %} ],
+[new Date({{ sample.time }} * 1000), {% match sample.bytes %} {% when Some with (bytes) %} {{ bytes }} {% when None %} null {% endmatch %} ],
                   {% endfor %}
               ],
-          }
+          },
           {% endfor %}
       ];
 

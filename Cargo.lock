@@ -2013,7 +2013,7 @@ dependencies = [
 
 [[package]]
 name = "qwer"
-version = "0.1.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "argh",
@@ -2049,7 +2049,7 @@ dependencies = [
 
 [[package]]
 name = "qwer-ingest"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
