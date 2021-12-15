@@ -14,9 +14,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build frontend
-      run: ./build/package-rpm.sh
+      run: bash ./build/package-rpm.sh
     - name: Build ingest
-      run: ./build/package-ingest-rpm.sh
+      run: bash ./build/package-ingest-rpm.sh
 
     - name: Deploy
       uses: easingthemes/ssh-deploy@main
