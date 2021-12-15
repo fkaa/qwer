@@ -1,8 +1,8 @@
-name: Rust
+name: Deploy to dev
 
 on:
   push:
-    branches: [ trunk ]
+    branches: [ trunk, deploy-test ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,9 +13,29 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose --release
-    - name: Deploy to dev
+    - name: Build frontend
+      run: ./build/package-rpm.sh
+    - name: Build ingest
+      run: ./build/package-ingest-rpm.sh
+
+    - name: Deploy
+      uses: easingthemes/ssh-deploy@main
       env:
-        DEPLOY_KEY: ${{ secrets.RELKOJ_KEY }}
-      run: 'curl --silent --show-error --fail --basic -u "$DEPLOY_KEY" -H "git-commit: $GITHUB_SHA" -F "bin=@target/release/streamhead" https://dev.streamhead.mavulp.com/deploy'
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
+        ARGS: >-
+          -rltgoDzvO
+          --exclude='.git'
+          --exclude='node_modules/'
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
+        TARGET: /home/deployer
+
+    - name: Post Deploy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.REMOTE_HOST_DEV }}
+        username: ${{ secrets.REMOTE_USER_DEV }}
+        key: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
+        port: 22
+        script: |
+          /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
