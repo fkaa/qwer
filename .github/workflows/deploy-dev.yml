@@ -27,6 +27,12 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+    - name: Build ingest docker image
+      run: docker build -t qwer-ingest-build-container -f build/Dockerfile.qwer-ingest
+
+    - name: Build frontend docker image
+      run: docker build -t qwer-build-container -f build/Dockerfile.qwer
+
     - name: Install npm packages
       run: npm install --prefix qw-site/frontend
 
@@ -41,12 +47,11 @@ jobs:
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
         ARGS: >-
-          -rltgoDzvO
-          --exclude='.git'
-          --exclude='node_modules/'
+          -rtzv
         REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
         REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
-        TARGET: /home/deployer
+        SOURCE: "artifacts/"
+        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/artifacts
 
     - name: Post Deploy
       uses: appleboy/ssh-action@master
