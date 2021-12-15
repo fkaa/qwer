@@ -28,10 +28,10 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build ingest docker image
-      run: docker build -t qwer-ingest-build-container -f build/Dockerfile.qwer-ingest
+      run: docker build -t qwer-ingest-build-container -f build/Dockerfile.qwer-ingest .
 
     - name: Build frontend docker image
-      run: docker build -t qwer-build-container -f build/Dockerfile.qwer
+      run: docker build -t qwer-build-container -f build/Dockerfile.qwer .
 
     - name: Install npm packages
       run: npm install --prefix qw-site/frontend
