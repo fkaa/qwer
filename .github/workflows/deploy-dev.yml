@@ -1,22 +1,26 @@
-name: Deploy to dev
+name: Deploy qwer to dev
 
 on:
   push:
-    branches: [ trunk, deploy-test ]
+    branches: [ trunk, deploy-test, deploy-test-2 ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
+
     - name: Add musl ubuntu package
       run: sudo apt-get install -y musl musl-dev musl-tools
+
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
+
     - uses: actions/cache@v2
       with:
         path: |
@@ -27,38 +31,59 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Build ingest docker image
-      run: docker build -t qwer-ingest-build-container -f build/Dockerfile.qwer-ingest .
-
-    - name: Build frontend docker image
-      run: docker build -t qwer-build-container -f build/Dockerfile.qwer .
-
-    - name: Install npm packages
+    - name: Install NPM packages
       run: npm install --prefix qw-site/frontend
 
-    - name: Build frontend
-      run: bash ./build/package-rpm.sh
+    - name: Build NPM project
+      run: npm run build --prefix qw-site/frontend
 
-    - name: Build ingest
-      run: bash ./build/package-ingest-rpm.sh
+    - name: Build qwer
+      run: cargo build --release --target x86_64-unknown-linux-musl -p qwer
 
-    - name: Deploy
-      uses: easingthemes/ssh-deploy@main
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
-        ARGS: >-
-          -rtzv
-        REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
-        REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
-        SOURCE: "artifacts/RPMS/x86_64/"
-        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/rpms
+    - name: Get package version
+      run: echo "CRATE_VERSION=$(sed -n -e 's/^version = \"\([0-9].\+\)\"/\1/p' ./qw-site/Cargo.toml)" >> $GITHUB_ENV
 
-    - name: Post Deploy
-      uses: appleboy/ssh-action@master
+    - name: Compress artifacts
+      run: tar -vpczf qwer.tar.gz --transform "s,^,qwer-${{ env.CRATE_VERSION }}/," ./build ./qw-site/frontend/dist ./qw-site/docs/output ./target/x86_64-unknown-linux-musl/release/qwer
+
+    - uses: actions/upload-artifact@master
       with:
-        host: ${{ secrets.REMOTE_HOST_DEV }}
-        username: ${{ secrets.REMOTE_USER_DEV }}
-        key: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
-        port: 22
-        script: |
-          sudo /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
+        name: qwer-build-artifacts
+        path: qwer.tar.gz
+    outputs:
+      package_version: ${{ env.CRATE_VERSION }}
+
+  package:
+    needs: build
+    name: Package RPM
+    runs-on: ubuntu-latest
+    env:
+      CRATE_VERSION: ${{ needs.build.outputs.package_version }}
+
+    steps:
+    - uses: actions/checkout@master
+
+    - uses: actions/download-artifact@master
+      with:
+        name: qwer-build-artifacts
+        path: ./rpmbuild/SOURCES
+
+    - name: Build RPM docker image
+      run: docker build -t qwer-build-container -f build/Dockerfile.qwer .
+
+    - name: Run RPM docker environment
+      run: docker run --rm -v $(pwd):/app -e CRATE_VERSION="${{ env.CRATE_VERSION }}" qwer-build-container --entrypoint=/bin/bash
+
+#    - name: Setup build environment
+#      run: sudo apt-get install -y rpm librpmbuild8 systemd libsystemd-dev
+
+#    - name: Setup RPM environment
+#      run: rpmdev-setuptree
+
+#    - name: Build RPM package
+#      run: rpmbuild -bb ./build/qwer.spec
+
+    - uses: actions/upload-artifact@master
+      with:
+        name: qwer-rpm
+        path: ./rpmbuild/RPMS

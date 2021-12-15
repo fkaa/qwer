@@ -6,7 +6,7 @@ Summary:        A simple web app
 License:        AGPLv3
 Source0:        %{name}.tar.gz
 
-BuildRequires:  systemd
+BuildRequires:  systemd-rpm-macros
 
 Provides:       %{name} = %{version}
 
@@ -25,7 +25,7 @@ A simple web app
 # cargo build --release
 
 %install
-install -Dpm 0755 ./build/%{name} %{buildroot}%{_bindir}/%{name}
+install -Dpm 0755 ./target/x86_64-unknown-linux-musl/release/%{name} %{buildroot}%{_bindir}/%{name}
 install -Dpm 644 ./build/%{name}.service %{buildroot}%{_unitdir}/%{name}.service
 
 mkdir -p %{buildroot}%{_datadir}/%{name}/www

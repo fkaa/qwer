@@ -2,9 +2,6 @@ FROM fedora:34
 
 WORKDIR /app
 
-RUN dnf -y install ripgrep
-RUN dnf -y groupinstall "RPM Development Tools"
-
-# COPY . .
+RUN dnf -y install redhat-rpm-config rpm-build rpmdevtools systemd-rpm-macros
 
 ENTRYPOINT ["bash", "./build/build.sh"]
