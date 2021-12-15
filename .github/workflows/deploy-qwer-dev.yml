@@ -1,0 +1,19 @@
+name: Deploy qwer (dev)
+
+on: workflow_dispatch
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    uses: fkaa/qwer/.github/workflows/build-qwer.yml@trunk
+
+  deploy:
+    needs: build
+    uses: fkaa/qwer/.github/workflows/deploy-dev.yml@trunk
+    with:
+      input-artifact: qwer-build-artifacts
+      output-artifact: qwer-rpm
+      build-dockerfile: build/Dockerfile.qwer
+      version: ${{ needs.build.outputs.crate-version }}

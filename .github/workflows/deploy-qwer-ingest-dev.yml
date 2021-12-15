@@ -1,0 +1,19 @@
+name: Deploy qwer-ingest (dev)
+
+on: workflow_dispatch
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    uses: fkaa/qwer/.github/workflows/build-qwer-ingest.yml@trunk
+
+  deploy:
+    needs: build
+    uses: fkaa/qwer/.github/workflows/deploy-dev.yml@trunk
+    with:
+      input-artifact: qwer-ingest-build-artifacts
+      output-artifact: qwer-ingest-rpm
+      build-dockerfile: build/Dockerfile.qwer-ingest
+      version: ${{ needs.build.outputs.crate-version }}

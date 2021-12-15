@@ -1,0 +1,53 @@
+name: Build qwer-ingest
+
+on:
+  push:
+    branches: [ trunk, deploy-test, deploy-test-2 ]
+  workflow_call:
+    outputs:
+      crate-version:
+        description: "Version of the build artifact"
+        value: ${{ jobs.build.outputs.package_version }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Add musl ubuntu package
+      run: sudo apt-get install -y musl musl-dev musl-tools
+
+    - name: Add musl target
+      run: rustup target add x86_64-unknown-linux-musl
+
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build qwer-ingest
+      run: cargo build --release --target x86_64-unknown-linux-musl -p qwer-ingest
+
+    - name: Get package version
+      run: echo "CRATE_VERSION=$(sed -n -e 's/^version = \"\([0-9].\+\)\"/\1/p' ./qw-site/Cargo.toml)" >> $GITHUB_ENV
+
+    - name: Compress artifacts
+      run: tar -vpczf qwer-ingest.tar.gz --transform "s,^,qwer-ingest-${{ env.CRATE_VERSION }}/," ./build  ./target/x86_64-unknown-linux-musl/release/qwer-ingest
+
+    - uses: actions/upload-artifact@master
+      with:
+        name: qwer-ingest-build-artifacts
+        path: qwer-ingest.tar.gz
+    outputs:
+      package_version: ${{ env.CRATE_VERSION }}

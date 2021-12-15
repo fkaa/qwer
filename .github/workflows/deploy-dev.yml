@@ -1,21 +1,80 @@
-name: Rust
+name: Deploy (dev)
 
 on:
-  push:
-    branches: [ trunk ]
+  workflow_call:
+    inputs:
+      input-artifact:
+        required: true
+        type: string
+      output-artifact:
+        required: true
+        type: string
+      build-dockerfile:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  package:
+    name: Package ${{ inputs.output-artifact }} ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    env:
+      CRATE_VERSION: ${{ inputs.version }}
+
+    steps:
+    - uses: actions/checkout@master
+
+    - uses: actions/download-artifact@master
+      with:
+        name: ${{ inputs.input-artifact }} # qwer-build-artifacts
+        path: ./rpmbuild/SOURCES
+
+    - name: Build RPM docker image
+      run: docker build -t build-container -f ${{ inputs.build-dockerfile }} . # build/Dockerfile.qwer .
+
+    - name: Run RPM docker environment
+      run: docker run --rm -v $(pwd):/app -e CRATE_VERSION="${{ inputs.version }}" build-container --entrypoint=/bin/bash
+
+    - uses: actions/upload-artifact@master
+      with:
+        name: ${{ inputs.output-artifact }} # qwer-rpm
+        path: ./rpmbuild/RPMS
+
+  deploy:
+    name: Deploy
+    needs: package
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose --release
-    - name: Deploy to dev
+    - uses: actions/checkout@master
+
+    - uses: actions/download-artifact@master
+      with:
+        name: ${{ inputs.output-artifact }} # qwer-rpm
+        path: ./artifacts/
+
+    - name: Deploy
+      uses: easingthemes/ssh-deploy@main
       env:
-        DEPLOY_KEY: ${{ secrets.RELKOJ_KEY }}
-      run: 'curl --silent --show-error --fail --basic -u "$DEPLOY_KEY" -H "git-commit: $GITHUB_SHA" -F "bin=@target/release/streamhead" https://dev.streamhead.mavulp.com/deploy'
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
+        ARGS: >-
+          -rtzv
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
+        SOURCE: "artifacts/RPMS/x86_64/"
+        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/rpms
+
+    - name: Post Deploy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.REMOTE_HOST_DEV }}
+        username: ${{ secrets.REMOTE_USER_DEV }}
+        key: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
+        port: 22
+        script: |
+          sudo /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
