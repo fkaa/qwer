@@ -6,7 +6,6 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0"
 askama = "0.10"
-comrak = "0.12"
-dotenv = "0.15"
+comrak = { version = "0.12", default-features = false }
 serde = "1.0"
 serde_json = "1.0"

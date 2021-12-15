@@ -1,7 +1,7 @@
 use axum::{AddExtensionLayer, Router, body::{self}, extract::{
         ws::{WebSocket, WebSocketUpgrade},
         Extension, Path,
-    }, handler::get, response::IntoResponse};
+    }, response::IntoResponse, routing::get};
 use futures::{future, Stream};
 use hyper::{Response, StatusCode};
 use tokio::sync::broadcast::{self, Receiver, Sender};

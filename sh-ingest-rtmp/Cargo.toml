@@ -20,5 +20,5 @@ tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 
 flvparse = "0.1"
-rml_rtmp = "0.4"
-stop-token = { git = "https://github.com/soruh/stop-token" }
+rml_rtmp = "0.6"
+# stop-token = { git = "https://github.com/soruh/stop-token" }

@@ -13,7 +13,7 @@ hyper = "*"
 anyhow = "*"
 http = "*"
 tokio = { version = "1.1", features = ["full"] }
-tower-http = { version = "0.1", features = ["fs", "trace", "auth"] }
+tower-http = { version = "0.2", features = ["fs", "trace", "auth"] }
 tonic = { version = "*", features = ["tls", "compression"] }
 
 async-trait = "*"
@@ -21,7 +21,6 @@ futures = "*"
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features = ["env-filter"] }
 
-argh = "0.1"
 dotenv = "*"
 time = "0.3"
 
@@ -37,7 +36,7 @@ fastrand = "1.5.0"
 ascii = "1.0.0"
 serde = "1.0.130"
 argon2 = { version = "0.3.1", features = ["std"] }
-cookie = { version = "0.15.1", features = ["secure", "percent-encode"] }
+cookie = { version = "0.16.0-rc.1", features = ["secure", "percent-encode"] }
 rand = "0.8"
 headers = "0.3.5"
 

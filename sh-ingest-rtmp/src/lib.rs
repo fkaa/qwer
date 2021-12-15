@@ -1,7 +1,6 @@
 use av_format::buffer::AccReader;
 use av_mp4::boxes::codec::avcc::AvcDecoderConfigurationRecord;
 use bytes::Bytes;
-use failure::Fail;
 use futures::{
     channel::mpsc::{channel, Receiver, Sender},
     SinkExt,
@@ -49,10 +48,10 @@ pub enum RtmpError {
     //#[error("IO error: {0}")]
     //Io(#[from] std::io::Error),
     #[error("{0}")]
-    Handshake(rml_rtmp::handshake::HandshakeErrorKind),
+    Handshake(rml_rtmp::handshake::HandshakeError),
 
     #[error("{0}")]
-    ServerSession(rml_rtmp::sessions::ServerSessionErrorKind),
+    ServerSession(rml_rtmp::sessions::ServerSessionError),
 
     #[error("Failed to parse video tag")]
     ParseVideoTag,
@@ -113,7 +112,7 @@ impl RtmpRequest {
         let results = self
             .server_session
             .accept_request(self.request_id)
-            .map_err(|e| RtmpError::ServerSession(e.kind))?;
+            .map_err(|e| RtmpError::ServerSession(e))?;
 
         self.results.extend(results);
 
@@ -332,7 +331,7 @@ impl RtmpReadFilter {
             for res in self
                 .rtmp_server_session
                 .handle_input(&bytes)
-                .map_err(|e| e.kind.compat())?
+                .map_err(|e| e)?
             {
                 match res {
                     ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
@@ -395,8 +394,7 @@ impl RtmpReadFilter {
         let bytes = self.read_filter.read().await?;
         let results = self
             .rtmp_server_session
-            .handle_input(&bytes)
-            .map_err(|e| e.kind.compat())?;
+            .handle_input(&bytes)?;
 
         self.process_results(results).await?;
 
@@ -658,7 +656,7 @@ async fn process(
                 response_bytes,
                 remaining_bytes,
             }) => break (response_bytes, remaining_bytes),
-            Err(e) => return Err(RtmpError::Handshake(e.kind)),
+            Err(e) => return Err(RtmpError::Handshake(e)),
         };
 
         write.write(response.into()).await?;
@@ -669,11 +667,11 @@ async fn process(
     // Create the RTMP session
     let config = ServerSessionConfig::new();
     let (mut session, initial_results) =
-        ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e.kind))?;
+        ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e))?;
 
     let results = session
         .handle_input(&remaining)
-        .map_err(|e| RtmpError::ServerSession(e.kind))?;
+        .map_err(|e| RtmpError::ServerSession(e))?;
 
     let mut r = VecDeque::new();
     let mut stream_info = None;
@@ -696,7 +694,7 @@ async fn process(
                         r.extend(
                             session
                                 .accept_request(request_id)
-                                .map_err(|e| RtmpError::ServerSession(e.kind))?,
+                                .map_err(|e| RtmpError::ServerSession(e))?,
                         );
 
                         debug!("Accepted connection request");
@@ -725,7 +723,7 @@ async fn process(
         let bytes = read.read().await?;
         let results = session
             .handle_input(&bytes)
-            .map_err(|e| RtmpError::ServerSession(e.kind))?;
+            .map_err(|e| RtmpError::ServerSession(e))?;
         r.extend(results);
     }
 }
