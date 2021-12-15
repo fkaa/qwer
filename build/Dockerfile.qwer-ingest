@@ -7,4 +7,4 @@ RUN dnf -y groupinstall "RPM Development Tools"
 
 # COPY . .
 
-ENTRYPOINT ["./build/build-ingest.sh"]
+ENTRYPOINT ["bash", "./build/build-ingest.sh"]

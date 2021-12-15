@@ -7,4 +7,4 @@ RUN dnf -y groupinstall "RPM Development Tools"
 
 # COPY . .
 
-ENTRYPOINT ["./build/build.sh"]
+ENTRYPOINT ["bash", "./build/build.sh"]
