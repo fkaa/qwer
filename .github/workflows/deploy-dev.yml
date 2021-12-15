@@ -50,8 +50,8 @@ jobs:
           -rtzv
         REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
         REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
-        SOURCE: "artifacts/"
-        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/artifacts
+        SOURCE: "artifacts/RPMS/x86_64/"
+        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/rpms
 
     - name: Post Deploy
       uses: appleboy/ssh-action@master
@@ -61,4 +61,4 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
         port: 22
         script: |
-          /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
+          sudo /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
