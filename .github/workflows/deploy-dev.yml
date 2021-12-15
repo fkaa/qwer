@@ -14,9 +14,18 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Add musl ubuntu package
-      run: sudo apt-get install -y musl
+      run: sudo apt-get install -y musl musl-dev musl-tools
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Build frontend
       run: bash ./build/package-rpm.sh
     - name: Build ingest
