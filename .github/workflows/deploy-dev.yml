@@ -26,8 +26,13 @@ jobs:
           ~/.cargo/git/db/
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install npm packages
+      run: npm install --prefix qw-site/frontend
+
     - name: Build frontend
       run: bash ./build/package-rpm.sh
+
     - name: Build ingest
       run: bash ./build/package-ingest-rpm.sh
 
