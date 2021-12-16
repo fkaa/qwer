@@ -168,12 +168,12 @@ async fn run_migrations(
             .join(", ")
     );
 
+    runner.run_async(&mut conn).await?;
+
     let latest_migration = runner.get_last_applied_migration_async(&mut conn).await?;
     if let Some(migration) = latest_migration {
         info!("Latest applied migration: {}", format!("{}", migration));
     }
-
-    runner.run_async(&mut conn).await?;
 
     Ok(())
 }
