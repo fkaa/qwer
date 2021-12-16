@@ -17,3 +17,7 @@ jobs:
       output-artifact: qwer-ingest-rpm
       build-dockerfile: build/Dockerfile.qwer-ingest
       version: ${{ needs.build.outputs.crate-version }}
+    secrets:
+      REMOTE_HOST_DEV: ${{ secrets.REMOTE_HOST_DEV }}
+      REMOTE_USER_DEV: ${{ secrets.REMOTE_USER_DEV }}
+      SSH_PRIVATE_KEY_DEV: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
