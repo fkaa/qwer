@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "sh-media",
-    "sh-fmp4",
-    "sh-ingest-rtmp",
-    "sh-transport-mse",
-    "qw-site-doc-gen",
+    "libs/sh-media",
+    "libs/sh-fmp4",
+    "libs/sh-ingest-rtmp",
+    "libs/sh-transport-mse",
+    "libs/qw-site-doc-gen",
+    "libs/qw-proto",
     "qw-site",
     "qw-ingest",
-    "qw-proto",
 ]
 
 [patch.crates-io]

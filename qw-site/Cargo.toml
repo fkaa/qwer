@@ -30,7 +30,7 @@ bb8 = { version = "0.7" }
 bb8-postgres = { version = "0.7" }
 refinery = { version = "0.7", features = ["tokio-postgres"] }
 # sqlx = { version = "0.5", features = ["time", "sqlite", "runtime-tokio-rustls"] }
-qw-proto = { path = "../qw-proto" }
+qw-proto = { path = "../libs/qw-proto" }
 lettre = { version = "0.10.0-rc.4", default-features = false, features = ["smtp-transport", "hostname", "builder", "pool", "rustls-tls"] }
 fastrand = "1.5.0"
 ascii = "1.0.0"
@@ -41,4 +41,4 @@ rand = "0.8"
 headers = "0.3.5"
 
 [build-dependencies]
-qw-doc-gen = { path = "../qw-site-doc-gen" }
+qw-doc-gen = { path = "../libs/qw-site-doc-gen" }

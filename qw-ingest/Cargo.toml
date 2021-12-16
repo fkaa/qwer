@@ -26,8 +26,8 @@ tracing-subscriber = { version="0.3", features = ["env-filter"] }
 tracing = "0.1"
 tonic = { version = "*", features = ["tls", "compression"] }
 
-sh-media = { path = "../sh-media" }
-sh-ingest-rtmp = { path = "../sh-ingest-rtmp" }
-sh-transport-mse = { path = "../sh-transport-mse" }
-sh-fmp4 = { path = "../sh-fmp4" }
-qw-proto = { path = "../qw-proto" }
+sh-media = { path = "../libs/sh-media" }
+sh-ingest-rtmp = { path = "../libs/sh-ingest-rtmp" }
+sh-transport-mse = { path = "../libs/sh-transport-mse" }
+sh-fmp4 = { path = "../libs/sh-fmp4" }
+qw-proto = { path = "../libs/qw-proto" }
