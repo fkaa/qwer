@@ -2,7 +2,7 @@ name: Build qwer
 
 on:
   push:
-    branches: [ trunk, deploy-test, deploy-test-2 ]
+    branches: [ trunk ]
   workflow_call:
     outputs:
       crate-version:

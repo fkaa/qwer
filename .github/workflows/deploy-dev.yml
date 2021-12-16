@@ -15,6 +15,13 @@ on:
       version:
         required: true
         type: string
+    secrets:
+      SSH_PRIVATE_KEY_DEV:
+        required: true
+      REMOTE_HOST_DEV:
+        required: true
+      REMOTE_USER_DEV:
+        required: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -66,8 +73,8 @@ jobs:
           -rtzv
         REMOTE_HOST: ${{ secrets.REMOTE_HOST_DEV }}
         REMOTE_USER: ${{ secrets.REMOTE_USER_DEV }}
-        SOURCE: "artifacts/RPMS/x86_64/"
-        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/rpms
+        SOURCE: "artifacts/x86_64/"
+        TARGET: /home/${{ secrets.REMOTE_USER_DEV }}/${{ inputs.output-artifact }}
 
     - name: Post Deploy
       uses: appleboy/ssh-action@master
@@ -77,4 +84,4 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
         port: 22
         script: |
-          sudo /home/${{ secrets.REMOTE_USER_DEV }}/deploy.sh
+          sudo /home/${{ secrets.REMOTE_USER_DEV }}/${{ inputs.output-artifact }}.sh
