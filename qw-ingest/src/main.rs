@@ -1,7 +1,13 @@
-use axum::{AddExtensionLayer, Router, body::{self}, extract::{
+use axum::{
+    body::{self},
+    extract::{
         ws::{WebSocket, WebSocketUpgrade},
         Extension, Path,
-    }, response::IntoResponse, routing::get};
+    },
+    response::IntoResponse,
+    routing::get,
+    AddExtensionLayer, Router,
+};
 use futures::{future, Stream};
 use hyper::{Response, StatusCode};
 use tokio::sync::broadcast::{self, Receiver, Sender};
@@ -10,10 +16,7 @@ use tonic::transport::{Channel, Endpoint};
 use tracing::*;
 
 use qw_proto::{
-    stream_auth::{
-        stream_auth_service_client::StreamAuthServiceClient,
-        IngestRequest,
-    },
+    stream_auth::{stream_auth_service_client::StreamAuthServiceClient, IngestRequest},
     stream_info::{
         stream_info_server::{StreamInfo, StreamInfoServer},
         stream_reply::{
@@ -33,7 +36,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{bandwidth_analyzer::BandwidthAnalyzerFilter, snapshot_provider::SnapshotProviderFilter};
+use crate::{
+    bandwidth_analyzer::BandwidthAnalyzerFilter, snapshot_provider::SnapshotProviderFilter,
+};
 
 mod bandwidth_analyzer;
 mod snapshot_provider;
@@ -46,7 +51,11 @@ pub struct StreamMetadata {
 
 impl StreamMetadata {
     pub fn new(queue: MediaFrameQueue, snapshot: Arc<RwLock<Option<Frame>>>) -> Self {
-        StreamMetadata { queue, viewers: 0, snapshot, }
+        StreamMetadata {
+            queue,
+            viewers: 0,
+            snapshot,
+        }
     }
 }
 
@@ -106,7 +115,13 @@ impl StreamRepository {
         }
     }
 
-    pub fn start_stream(&mut self, stream_session_id: i32, stream: String, queue: MediaFrameQueue, snapshot: Arc<RwLock<Option<Frame>>>) {
+    pub fn start_stream(
+        &mut self,
+        stream_session_id: i32,
+        stream: String,
+        queue: MediaFrameQueue,
+        snapshot: Arc<RwLock<Option<Frame>>>,
+    ) {
         let meta = StreamMetadata::new(queue, snapshot);
         self.streams.insert(stream_session_id, meta);
         self.stream_mapping.insert(stream, stream_session_id);
@@ -198,7 +213,9 @@ async fn rtmp_ingest(
 
     info!("Starting a stream at '{}'", app);
 
-    repo.write().unwrap().start_stream(id, app.clone(), queue, snapshot);
+    repo.write()
+        .unwrap()
+        .start_stream(id, app.clone(), queue, snapshot);
 
     if let Err(e) = graph.run().await {
         error!("Error while reading from RTMP stream: {}", e);
@@ -329,23 +346,22 @@ pub async fn snapshot(
 
     if let Some(frame) = meta.and_then(|m| m.snapshot.read().unwrap().clone()) {
         match sh_fmp4::single_frame_fmp4(frame) {
-            Ok(bytes) => {
-                Response::builder()
-                    .header("Content-Type", "video/mp4")
-                    .header("Access-Control-Allow-Origin", "*")
-                    .status(StatusCode::OK)
-                    .body(body::Full::from(bytes)).unwrap()
-            },
-            Err(e) => {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(body::Full::from(format!("Failed to get snapshot: {}", e))).unwrap()
-            }
+            Ok(bytes) => Response::builder()
+                .header("Content-Type", "video/mp4")
+                .header("Access-Control-Allow-Origin", "*")
+                .status(StatusCode::OK)
+                .body(body::Full::from(bytes))
+                .unwrap(),
+            Err(e) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(body::Full::from(format!("Failed to get snapshot: {}", e)))
+                .unwrap(),
         }
     } else {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(body::Full::from("Failed to find snapshot")).unwrap()
+            .body(body::Full::from("Failed to find snapshot"))
+            .unwrap()
     }
 }
 
@@ -370,8 +386,6 @@ async fn start() -> anyhow::Result<()> {
     let scuffed_rpc_addr = env("SCUFFED_RPC_ADDR", "localhost:9082");
 
     let stream_repo = Arc::new(RwLock::new(StreamRepository::new()));
-
-    let _repo = stream_repo.clone();
 
     let client_endpoint = Endpoint::from_shared(scuffed_rpc_addr)
         .unwrap()
