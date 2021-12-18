@@ -20,9 +20,6 @@ A simple web app
 
 
 %build
-# npm install --prefix ./site/frontend
-# npm run build --prefix ./site/frontend
-# cargo build --release
 
 %install
 install -Dpm 0755 ./target/x86_64-unknown-linux-musl/release/%{name} %{buildroot}%{_bindir}/%{name}

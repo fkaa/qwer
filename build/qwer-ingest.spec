@@ -21,7 +21,7 @@ A simple web app
 %build
 
 %install
-install -Dpm 0755 ./build/%{name} %{buildroot}%{_bindir}/%{name}
+install -Dpm 0755 ./target/x86_64-unknown-linux-musl/release/%{name} %{buildroot}%{_bindir}/%{name}
 install -Dpm 644 ./build/%{name}.service %{buildroot}%{_unitdir}/%{name}.service
 
 %check
