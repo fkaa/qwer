@@ -239,25 +239,31 @@ async fn listen_rtmp(
     let listener = RtmpListener::bind(addr).await?;
 
     loop {
-        let (req, app, key) = listener.accept().await?;
+        match listener.accept().await {
+            Ok((req, app, key)) => {
+                info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
 
-        info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
+                let repo = data.stream_repo.clone();
+                let sender = data.stream_stat_sender.clone();
+                let mut client = client.clone();
 
-        let repo = data.stream_repo.clone();
-        let sender = data.stream_stat_sender.clone();
-        let mut client = client.clone();
-        tokio::spawn(async move {
-            match authenticate_rtmp_stream(&mut client, &app, &key).await {
-                Ok(id) => {
-                    if let Err(e) = rtmp_ingest(id, app, req, sender, repo).await {
-                        error!("Error while ingesting RTMP: {}", e);
+                tokio::spawn(async move {
+                    match authenticate_rtmp_stream(&mut client, &app, &key).await {
+                        Ok(id) => {
+                            if let Err(e) = rtmp_ingest(id, app, req, sender, repo).await {
+                                error!("Error while ingesting RTMP: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to authenticate stream ingest: {}", e);
+                        }
                     }
-                }
-                Err(e) => {
-                    error!("Failed to authenticate stream ingest: {}", e);
-                }
+                });
             }
-        });
+            Err(e) => {
+                error!("Failed to accept RTMP connection: {}", e);
+            }
+        }
     }
 }
 
