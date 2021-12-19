@@ -108,7 +108,7 @@ pub struct RtmpRequest {
 }
 
 impl RtmpRequest {
-    pub async fn authenticate(mut self) -> Result<RtmpSession, RtmpError> {
+    pub async fn authenticate(mut self) -> anyhow::Result<RtmpSession> {
         let results = self
             .server_session
             .accept_request(self.request_id)
@@ -116,11 +116,37 @@ impl RtmpRequest {
 
         self.results.extend(results);
 
+
+        let (mut rtmp_tx, rtmp_rx) = channel(500);
+
+        tokio::spawn(async move {
+            match rtmp_write_task(self.write, rtmp_rx).await {
+                Ok(()) => {
+                    debug!("RTMP write task finished without errors");
+                }
+                Err(e) => {
+                    warn!("RTMP write task finished with error: {}", e);
+                }
+            }
+        });
+
+        let mut new_results = Vec::new();
+        for result in self.results.into_iter() {
+            match result {
+                ServerSessionResult::OutboundResponse(pkt) => rtmp_tx.send(pkt).await?,
+                _ => new_results.push(result),
+            }
+        }
+
+        let meta =
+            wait_for_metadata(&mut self.server_session, &mut self.read, &mut rtmp_tx).await?;
+
         Ok(RtmpSession {
-            write: self.write,
+            meta,
             read: self.read,
             server_session: self.server_session,
-            results: self.results,
+            results: new_results.into(),
+            rtmp_tx,
         })
     }
 
@@ -130,10 +156,45 @@ impl RtmpRequest {
 }
 
 pub struct RtmpSession {
-    write: TcpWriteFilter,
+    meta: StreamMetadata,
     read: TcpReadFilter,
     server_session: ServerSession,
     results: VecDeque<ServerSessionResult>,
+    rtmp_tx: Sender<Packet>,
+}
+
+impl RtmpSession {
+    pub fn stream_metadata(&self) -> &StreamMetadata {
+        &self.meta
+    }
+}
+
+async fn wait_for_metadata(
+    rtmp_server_session: &mut ServerSession,
+    read_filter: &mut TcpReadFilter,
+    rtmp_tx: &mut Sender<Packet>,
+) -> anyhow::Result<StreamMetadata> {
+    debug!("Waiting for metadata");
+
+    loop {
+        let bytes = read_filter.read().await?;
+        for res in rtmp_server_session.handle_input(&bytes).map_err(|e| e)? {
+            match res {
+                ServerSessionResult::OutboundResponse(pkt) => rtmp_tx.send(pkt).await?,
+                ServerSessionResult::RaisedEvent(evt) => match evt {
+                    ServerSessionEvent::StreamMetadataChanged {
+                        app_name: _,
+                        stream_key: _,
+                        metadata,
+                    } => {
+                        return Ok(metadata);
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -143,6 +204,7 @@ pub struct ParameterSetContext {
 }
 
 pub struct RtmpReadFilter {
+    meta: StreamMetadata,
     read_filter: TcpReadFilter,
     // stop_source: StopSource,
     rtmp_server_session: ServerSession,
@@ -177,25 +239,12 @@ async fn rtmp_write_task(
 
 impl RtmpReadFilter {
     pub fn new(session: RtmpSession) -> Self {
-        let (rtmp_tx, rtmp_rx) = channel(500);
-        // let stop_source = StopSource::new();
-
-        tokio::spawn(/*stop_source.stop_token().stop_future(*/ async move {
-            match rtmp_write_task(session.write, rtmp_rx).await {
-                Ok(()) => {
-                    debug!("RTMP write task finished without errors");
-                }
-                Err(e) => {
-                    warn!("RTMP write task finished with error: {}", e);
-                }
-            }
-        });
-
         RtmpReadFilter {
+            meta: session.meta,
             read_filter: session.read,
             // stop_source,
             rtmp_server_session: session.server_session,
-            rtmp_tx,
+            rtmp_tx: session.rtmp_tx,
 
             video_stream: None,
             video_time: 0,
@@ -323,34 +372,6 @@ impl RtmpReadFilter {
         Ok(())
     }
 
-    async fn wait_for_metadata(&mut self) -> anyhow::Result<StreamMetadata> {
-        // debug!(self.logger, "Waiting for metadata");
-
-        loop {
-            let bytes = self.read_filter.read().await?;
-            for res in self
-                .rtmp_server_session
-                .handle_input(&bytes)
-                .map_err(|e| e)?
-            {
-                match res {
-                    ServerSessionResult::OutboundResponse(pkt) => self.rtmp_tx.send(pkt).await?,
-                    ServerSessionResult::RaisedEvent(evt) => match evt {
-                        ServerSessionEvent::StreamMetadataChanged {
-                            app_name: _,
-                            stream_key: _,
-                            metadata,
-                        } => {
-                            return Ok(metadata);
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-        }
-    }
-
     async fn process_event(&mut self, event: ServerSessionEvent) -> anyhow::Result<()> {
         match event {
             ServerSessionEvent::AudioDataReceived {
@@ -392,9 +413,7 @@ impl RtmpReadFilter {
 
     async fn fetch(&mut self) -> anyhow::Result<()> {
         let bytes = self.read_filter.read().await?;
-        let results = self
-            .rtmp_server_session
-            .handle_input(&bytes)?;
+        let results = self.rtmp_server_session.handle_input(&bytes)?;
 
         self.process_results(results).await?;
 
@@ -421,10 +440,8 @@ impl FrameReadFilter for RtmpReadFilter {
 
         self.read_filter.start().await?;
 
-        let metadata = self.wait_for_metadata().await?;
-
-        let expecting_video = metadata.video_width.is_some();
-        let expecting_audio = metadata.audio_sample_rate.is_some();
+        let expecting_video = self.meta.video_width.is_some();
+        let expecting_audio = self.meta.audio_sample_rate.is_some();
 
         while (expecting_video && self.video_stream.is_none())
             || (expecting_audio && self.audio_stream.is_none())
@@ -489,8 +506,12 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
         base64::encode(&record.sequence_parameter_set)
     );*/
     // FIXME Always uses first set
+
     let sps = SeqParameterSet::from_bytes(&decode_nal(&record.sequence_parameter_sets[0].0[1..]))
         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    debug!("{:#?}", sps);
+
+    validate_sps(&sps)?;
 
     let (width, height) = sps.pixel_dimensions().unwrap();
 
@@ -510,6 +531,20 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
             },
         }),
     })
+}
+
+fn validate_sps(sps: &SeqParameterSet) -> anyhow::Result<()> {
+    if let Some(bitstream) = sps
+        .vui_parameters
+        .as_ref()
+        .and_then(|v| v.bitstream_restrictions.as_ref())
+    {
+        /*if bitstream.max_num_reorder_frames > 0 {
+            anyhow::bail!("B-frames are not allowed");
+        }*/
+    }
+
+    Ok(())
 }
 
 fn find_parameter_sets(bytes: &[u8]) -> ParameterSetContext {

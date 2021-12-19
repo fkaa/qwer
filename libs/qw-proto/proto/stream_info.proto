@@ -9,14 +9,22 @@ message StreamRequest {
   uint32 statsIntervalSeconds = 1;
 }
 
+message StreamMetadata {
+  optional string videoEncoder = 1;
+  optional uint32 videoBitrateKbps = 2;
+  optional bytes parameterSets = 3;
+}
+
 message StreamReply {
   message StreamExisting {
     int32 streamSessionId = 1;
     uint32 viewers = 2;
+    optional StreamMetadata meta = 3;
   }
 
   message StreamStarted {
     int32 streamSessionId = 1;
+    optional StreamMetadata meta = 2;
   }
 
   message StreamStopped {

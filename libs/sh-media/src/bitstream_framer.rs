@@ -84,34 +84,38 @@ pub fn parse_bitstream(bitstream: Bytes, source: BitstreamFraming) -> Vec<Bytes>
 }
 
 /// Frames NAL units with a given start code before each NAL.
-fn frame_nal_units_with_start_codes(nal_units: Vec<Bytes>, codes: &[u8]) -> BytesMut {
+fn frame_nal_units_with_start_codes<T: AsRef<[u8]>>(nal_units: &[T], codes: &[u8]) -> BytesMut {
     let mut bitstream = BytesMut::new();
 
     for nut in nal_units {
+        let slice = nut.as_ref();
+
         bitstream.extend_from_slice(codes);
-        bitstream.extend_from_slice(&nut[..]);
+        bitstream.extend_from_slice(&slice[..]);
     }
 
     bitstream
 }
 
 /// Frames NAL units with a length prefix before each NAL.
-fn frame_nal_units_with_length<F: Fn(&mut dyn BufMut, usize)>(
-    nal_units: Vec<Bytes>,
+fn frame_nal_units_with_length<F: Fn(&mut dyn BufMut, usize), T: AsRef<[u8]>>(
+    nal_units: &[T],
     write: F,
 ) -> BytesMut {
     let mut bitstream = BytesMut::new();
 
     for nut in nal_units {
-        write(&mut bitstream, nut.len());
-        bitstream.extend_from_slice(&nut[..]);
+        let slice = nut.as_ref();
+
+        write(&mut bitstream, slice.len());
+        bitstream.extend_from_slice(&slice[..]);
     }
 
     bitstream
 }
 
 /// Frame NAL units with the specified [BitstreamFraming].
-pub fn frame_nal_units(nal_units: Vec<Bytes>, target: BitstreamFraming) -> BytesMut {
+pub fn frame_nal_units<T: AsRef<[u8]>>(nal_units: &[T], target: BitstreamFraming) -> BytesMut {
     match target {
         BitstreamFraming::TwoByteLength => {
             frame_nal_units_with_length(nal_units, |b, l| b.put_u16(l as u16))
@@ -137,7 +141,7 @@ fn convert_bitstream(
     }
 
     let nal_units = parse_bitstream(bitstream, source);
-    frame_nal_units(nal_units, target).freeze()
+    frame_nal_units(&nal_units[..], target).freeze()
 }
 
 pub fn is_video_nal_unit(nal: &Bytes) -> bool {

@@ -156,7 +156,8 @@ async fn streams_page(Extension(data): Extension<Arc<AppData>>) -> Response<BoxB
 async fn run_migrations(
     manager: &bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>,
 ) -> anyhow::Result<()> {
-    let runner = migrations::runner();
+    let runner = migrations::runner().set_abort_divergent(false);
+
     let migrations = runner.get_migrations();
     let mut conn = manager.connect().await?;
 

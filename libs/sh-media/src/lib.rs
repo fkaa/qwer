@@ -103,6 +103,20 @@ pub struct VideoCodecInfo {
     pub extra: VideoCodecSpecificInfo,
 }
 
+impl VideoCodecInfo {
+    pub fn parameter_sets(&self) -> Option<Vec<u8>> {
+        let VideoCodecSpecificInfo::H264 {
+            sps,
+            pps,
+            ..
+        } = &self.extra;
+
+        let nuts = [sps.as_slice(), pps.as_slice()];
+
+        Some(frame_nal_units(&nuts[..], BitstreamFraming::FourByteLength).to_vec())
+    }
+}
+
 impl fmt::Debug for VideoCodecInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.extra {
@@ -255,15 +269,12 @@ impl Stream {
                 timebase: self.timebase,
             }
     }*/
-    pub fn parameter_sets(&self) -> Vec<&[u8]> {
-        if let CodecTypeInfo::Video(VideoCodecInfo {
-            extra: VideoCodecSpecificInfo::H264 { sps, pps, .. },
-            ..
-        }) = &self.codec.properties
+    pub fn parameter_sets(&self) -> Option<Vec<u8>> {
+        if let CodecTypeInfo::Video(info) = &self.codec.properties
         {
-            vec![&sps[..], &pps[..]]
+            info.parameter_sets()
         } else {
-            vec![]
+            None
         }
     }
 

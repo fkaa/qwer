@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{PostgresConnection, PostgresPool};
 
-use qw_proto::stream_info::stream_reply::StreamType;
+use qw_proto::stream_info::{stream_reply::StreamType, StreamMetadata};
 use tokio::sync::mpsc;
 use tracing::*;
 
@@ -86,6 +86,25 @@ SET stop_time = $2
 WHERE id = $1
             ",
             &[&stream_session_id, &end],
+        )
+        .await?;
+
+    Ok(())
+}
+
+pub async fn attach_stream_metadata(
+    conn: &PostgresConnection<'_>,
+    stream_session_id: i32,
+    meta: StreamMetadata,
+) -> anyhow::Result<()> {
+    let _ = conn
+        .execute(
+            "
+INSERT INTO stream_metadata (stream_session_id, encoder, video_bitrate_kbps, parameter_sets)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+            ",
+            &[&stream_session_id, &meta.video_encoder, &meta.video_bitrate_kbps.map(|b| b as i32), &meta.parameter_sets],
         )
         .await?;
 
@@ -218,10 +237,20 @@ WHERE stop_time IS NULL
                             viewers: stream.viewers,
                         },
                     );
+
+                    if let Some(meta) = stream.meta {
+                        let conn = self.pool.get().await?;
+                        attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
+                    }
                 }
                 StreamType::StreamStarted(stream) => {
                     self.streams
                         .insert(stream.stream_session_id, StreamInfo { viewers: 0 });
+
+                    if let Some(meta) = stream.meta {
+                        let conn = self.pool.get().await?;
+                        attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
+                    }
                 }
                 StreamType::ViewerJoin(msg) => {
                     if let Some(mut stream) = self.streams.get_mut(&msg.stream_session_id) {

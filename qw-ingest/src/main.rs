@@ -27,12 +27,12 @@ use qw_proto::{
             StreamExisting, StreamStarted, StreamStats, StreamStopped, StreamType, ViewerJoin,
             ViewerLeave,
         },
-        StreamReply, StreamRequest,
+        StreamMetadata, StreamReply, StreamRequest,
     },
 };
 use sh_media::{
     wait_for_sync_frame, BitstreamFramerFilter, BitstreamFraming, ByteStreamWriteFilter,
-    ByteWriteFilter2, FilterGraph, Frame, FrameAnalyzerFilter, FrameReadFilter, FrameWriteFilter,
+    ByteWriteFilter2, Frame, FrameAnalyzerFilter, FrameReadFilter, FrameWriteFilter,
     MediaFrameQueue, MediaFrameQueueReceiver,
 };
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
@@ -51,18 +51,24 @@ use crate::{
 mod bandwidth_analyzer;
 mod snapshot_provider;
 
-pub struct StreamMetadata {
+pub struct StreamState {
     queue: MediaFrameQueue,
     viewers: u32,
     snapshot: Arc<RwLock<Option<Frame>>>,
+    meta: StreamMetadata,
 }
 
-impl StreamMetadata {
-    pub fn new(queue: MediaFrameQueue, snapshot: Arc<RwLock<Option<Frame>>>) -> Self {
-        StreamMetadata {
+impl StreamState {
+    pub fn new(
+        queue: MediaFrameQueue,
+        snapshot: Arc<RwLock<Option<Frame>>>,
+        meta: StreamMetadata,
+    ) -> Self {
+        StreamState {
             queue,
             viewers: 0,
             snapshot,
+            meta,
         }
     }
 }
@@ -107,7 +113,7 @@ impl StreamInfo for StreamInfoService {
 
 pub struct StreamRepository {
     pub stream_mapping: HashMap<String, i32>,
-    pub streams: HashMap<i32, StreamMetadata>,
+    pub streams: HashMap<i32, StreamState>,
     send: Sender<StreamType>,
     // channels: Vec<Sender<StreamEvent>>,
 }
@@ -129,12 +135,14 @@ impl StreamRepository {
         stream: String,
         queue: MediaFrameQueue,
         snapshot: Arc<RwLock<Option<Frame>>>,
+        info: StreamMetadata,
     ) {
-        let meta = StreamMetadata::new(queue, snapshot);
+        let meta = StreamState::new(queue, snapshot, info.clone());
         self.streams.insert(stream_session_id, meta);
         self.stream_mapping.insert(stream, stream_session_id);
         self.send_event(StreamType::StreamStarted(StreamStarted {
             stream_session_id,
+            meta: Some(info),
         }));
     }
 
@@ -168,10 +176,11 @@ impl StreamRepository {
         let events = self
             .streams
             .iter()
-            .map(|(id, meta)| {
+            .map(|(id, state)| {
                 StreamType::StreamExisting(StreamExisting {
                     stream_session_id: *id,
-                    viewers: meta.viewers,
+                    viewers: state.viewers,
+                    meta: Some(state.meta.clone()),
                 })
             })
             .collect::<Vec<_>>();
@@ -209,24 +218,49 @@ async fn rtmp_ingest(
     use sh_ingest_rtmp::RtmpReadFilter;
 
     let session = request.authenticate().await?;
-    let queue = MediaFrameQueue::new();
+    let rtmp_meta = session.stream_metadata().clone();
+
+    let mut queue = MediaFrameQueue::new();
     let rtmp_filter = RtmpReadFilter::new(session);
     let rtmp_analyzer = FrameAnalyzerFilter::read(Box::new(rtmp_filter));
     let bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(rtmp_analyzer), id, sender);
 
     let snapshot = Arc::new(RwLock::new(None));
-    let snapshot_provider = SnapshotProviderFilter::new(Box::new(bw_analyzer), snapshot.clone());
+    let mut snapshot_provider =
+        SnapshotProviderFilter::new(Box::new(bw_analyzer), snapshot.clone());
 
-    let mut graph = FilterGraph::new(Box::new(snapshot_provider), Box::new(queue.clone()));
+    // let mut graph = FilterGraph::new(Box::new(snapshot_provider), Box::new(queue.clone()));
+
+    let streams = snapshot_provider.start().await?;
+
+    let parameter_sets = streams.iter().find_map(|s| s.parameter_sets());
+
+    queue.start(streams).await?;
+
+    let meta = StreamMetadata {
+        video_encoder: rtmp_meta.encoder,
+        video_bitrate_kbps: rtmp_meta.video_bitrate_kbps,
+        parameter_sets,
+    };
 
     info!("Starting a stream at '{}'", app);
 
     repo.write()
         .unwrap()
-        .start_stream(id, app.clone(), queue, snapshot);
+        .start_stream(id, app.clone(), queue.clone(), snapshot, meta);
 
-    if let Err(e) = graph.run().await {
-        error!("Error while reading from RTMP stream: {}", e);
+    async fn stream(
+        mut queue: MediaFrameQueue,
+        mut snapshot_provider: SnapshotProviderFilter,
+    ) -> anyhow::Result<()> {
+        loop {
+            let frame = snapshot_provider.read().await?;
+            queue.write(frame).await?;
+        }
+    }
+
+    if let Err(e) = stream(queue, snapshot_provider).await {
+        error!("Error while ingesting: {}", e);
     }
 
     info!("Stopping a stream at '{}'", app);
