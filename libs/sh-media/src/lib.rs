@@ -135,7 +135,7 @@ impl fmt::Debug for VideoCodecInfo {
                 let frame_rate = sps.vui_parameters.as_ref().and_then(|vui| {
                     vui.timing_info
                         .as_ref()
-                        .map(|t| Fraction::new(t.time_scale, t.num_units_in_tick))
+                        .map(|t| Fraction::new(t.time_scale / 2, t.num_units_in_tick))
                 });
 
                 write!(
