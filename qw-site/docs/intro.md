@@ -1,16 +1,26 @@
 # What is qwer.ee?
 
-qwer.ee is a livestreaming website you can use together with your friends. It is _not_ a twitch.tv replacement.
+qwer.ee is a [open source](https://github.com/fkaa/qwer) livestreaming
+website you can use together with your friends. It is _not_ a
+replacement for *big-streaming-site.tv*.
 
-## Huh? What's the difference?
+Unlike other big streaming sites, it focuses on low latency video with
+a small group of viewers. Interaction is assumed to exist outside of
+qwer.ee, for example with a group voice call. There is no live chat
+functionality.
 
-Big streaming companies are backed by billions on top of billions of money, and we simply cannot compete with that.
+## Why would I use this rather than X, Y, or Z?
 
-In order for qwer.ee to function while not consuming all my life savings there are some tradeoffs that have to be made:
+Nobody is forcing you to! But qwer.ee is open source, low latency, and
+does not require any registration to view streams.
 
-* There is only one video quality, the source material.
-* There is a bandwidth cap per account.
+## How do I use it?
 
-## How do i use it?
+Currently this instance (qwer.ee) requires an account to stream to,
+and accounts are handed out manually.
 
-If you want to watch a stream, find a public one in the list [here](/streams). If you want to stream you first need to create an account, then head over to [Introduction to streaming](streaming/intro.html)
+If you do have an account, check out the [Streaming with
+OBS](streaming/streaming-with-obs) page.
+
+If you just want to watch a stream then see if there are any public
+streams [here](/streams).

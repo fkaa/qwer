@@ -9,7 +9,7 @@
     <title>qwer.ee - help</title>
   </head>
   <body class="page is-primary">
-    <section class="section">
+    <section class="page-section section">
 
       <nav class="level">
         <!-- Left side -->
@@ -34,13 +34,13 @@
           {% for item in menu_items %}
           {% if item.children.len() == 0 %}
           <ul class="menu-list">
-            <li><a {% if item.path == current_path %}class="is-active"{% endif %} href="/help/{{ item.path }}.html">{{ item.name }}</a></li>
+            <li><a {% if item.path == current_path %}class="is-active"{% endif %} href="/help/{{ item.path }}">{{ item.name }}</a></li>
           </ul>
           {% else %}
           <p class="menu-label">{{ item.name }}</p>
           <ul class="menu-list">
             {% for item in item.children %}
-            <li><a {% if item.path == current_path %}class="is-active"{% endif %} href="/help/{{ item.path }}.html">{{ item.name }}</a></li>
+            <li><a {% if item.path == current_path %}class="is-active"{% endif %} href="/help/{{ item.path }}">{{ item.name }}</a></li>
             {% endfor %}
           </ul>
           {% endif %}

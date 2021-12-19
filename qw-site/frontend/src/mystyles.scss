@@ -4,16 +4,18 @@ $chiffon: #fffacd;
 $green: #4f8576;
 $purple: #a85266;
 $dark-purple: #302f51;
+$bright-pink: #bb56ac;
 $blue: #a9ded0;
 $orange: #F3B562;
 $red: #e0755f;
+
 
 $gray: #4a5050;
 $dark-gray: #333439;
 
 
 $background: $chiffon;
-$link: $dark-purple;
+$link: $bright-pink; // $dark-purple;
 $primary: $green;
 $warning: $orange;
 
@@ -136,6 +138,10 @@ $card-radius: 0.5rem;
 
 html, body {
     height: 100%;
+    background-color: $chiffon;
+}
+
+.page-section {
     background-color: $chiffon;
 }
 

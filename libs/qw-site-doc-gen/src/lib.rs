@@ -56,7 +56,7 @@ fn generate_help_item(src_paths: &mut Vec<String>, menu_items: &[MenuItem], root
 
     match item {
         TreeItem::Item { path, src_file, .. } => {
-            dest_path.push(format!("{}.html", path));
+            dest_path.push(format!("{}", path));
 
             let mut src = root_dir.clone();
             src.push(src_file);

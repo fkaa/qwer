@@ -1,13 +1,27 @@
 [
-    { "title": "What is qwer.ee?", "src": "intro.md", "path": "index" },
+    {
+        "title": "What is qwer.ee?",
+        "src": "intro.md",
+        "path": "intro"
+    },
     {
         "title": "Streaming",
         "path": "streaming",
         "children": [
             {
-                "title": "Introduction to streaming",
-                "src": "streaming/intro.md",
-                "path": "streaming/intro"
+                "title": "Streaming with OBS",
+                "src": "streaming/streaming-with-obs.md",
+                "path": "streaming/streaming-with-obs"
+            },
+            {
+                "title": "Stream visibility",
+                "src": "streaming/stream-visibility.md",
+                "path": "streaming/stream-visibility"
+            },
+            {
+                "title": "Optimizing bandwidth",
+                "src": "streaming/optimizing-bandwidth.md",
+                "path": "streaming/optimizing-bandwidth"
             }
         ]
     }
