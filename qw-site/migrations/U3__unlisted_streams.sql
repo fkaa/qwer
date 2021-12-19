@@ -1,0 +1,2 @@
+ALTER TABLE stream_session
+ADD COLUMN unlisted BOOL NOT NULL DEFAULT FALSE;

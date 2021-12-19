@@ -282,15 +282,16 @@ async fn listen_rtmp(
 
     loop {
         match listener.accept().await {
-            Ok((req, _app, key)) => {
-                info!("Got a RTMP session from {}", req.addr());
+            Ok((req, app, key)) => {
+                info!("Got a RTMP session from {} with app {}", req.addr(), app);
 
                 let repo = data.stream_repo.clone();
                 let sender = data.stream_stat_sender.clone();
                 let mut client = client.clone();
+                let is_public = app == "public";
 
                 tokio::spawn(async move {
-                    match authenticate_rtmp_stream(&mut client, &key).await {
+                    match authenticate_rtmp_stream(&mut client, &key, is_public).await {
                         Ok((id, name)) => {
                             if let Err(e) = rtmp_ingest(id, name, req, sender, repo).await {
                                 error!("Error while ingesting RTMP: {}", e);
@@ -312,9 +313,11 @@ async fn listen_rtmp(
 async fn authenticate_rtmp_stream(
     client: &mut StreamAuthServiceClient<Channel>,
     supplied_stream_key: &str,
+    is_public_stream: bool,
 ) -> anyhow::Result<(i32, String)> {
     let request = IngestRequest {
         stream_key: supplied_stream_key.into(),
+        is_unlisted: !is_public_stream,
     };
     let response = client.request_stream_ingest(request).await?.into_inner();
     Ok((response.stream_session_id, response.streamer_name))

@@ -7,8 +7,11 @@ service StreamAuthService {
 }
 
 message IngestRequest {
-  // Required. The stream key for the name field.
+  // The stream key to authenticate with.
   string streamKey = 2;
+
+  // Whether the stream created should be unlisted or public.
+  bool isUnlisted = 3;
 }
 
 message IngestRequestReply {

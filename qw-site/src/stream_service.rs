@@ -53,6 +53,7 @@ VALUES($1, $2, $3)
 pub async fn start_stream_session(
     conn: &PostgresConnection<'_>,
     account: i32,
+    is_unlisted: bool,
     start: time::OffsetDateTime,
 ) -> anyhow::Result<i32> {
     let start = start.unix_timestamp();
@@ -60,11 +61,11 @@ pub async fn start_stream_session(
     let row = conn
         .query_one(
             "
-INSERT INTO stream_session (account_id, start_time)
-VALUES ($1, $2)
+INSERT INTO stream_session (account_id, start_time, unlisted)
+VALUES ($1, $2, $3)
 RETURNING id
             ",
-            &[&account, &start],
+            &[&account, &start, &is_unlisted],
         )
         .await?;
 
@@ -154,7 +155,7 @@ pub struct ActiveStreamSession {
     pub account_name: String,
 }
 
-pub async fn get_active_stream_sessions(
+pub async fn get_active_public_stream_sessions(
     conn: &PostgresConnection<'_>,
 ) -> anyhow::Result<Vec<ActiveStreamSession>> {
     let sessions = conn
@@ -168,7 +169,8 @@ FROM stream_session
 INNER JOIN account ON
     stream_session.account_id = account.id
 WHERE
-    stream_session.stop_time IS NULL
+    stream_session.stop_time IS NULL AND
+    NOT stream_session.unlisted
         ",
             &[],
         )

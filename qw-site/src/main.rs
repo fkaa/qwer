@@ -135,7 +135,7 @@ struct StreamsTemplate<'a> {
 async fn streams_page(Extension(data): Extension<Arc<AppData>>) -> Response<BoxBody> {
     let conn = data.pool.get().await.unwrap();
 
-    let sessions = stream_service::get_active_stream_sessions(&conn)
+    let sessions = stream_service::get_active_public_stream_sessions(&conn)
         .await
         .unwrap()
         .into_iter()

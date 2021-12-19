@@ -40,7 +40,7 @@ WHERE stream_key = $1
 
         if let Some((id, name)) = account {
             let stream_session =
-                start_stream_session(&conn, id, time::OffsetDateTime::now_utc()).await?;
+                start_stream_session(&conn, id, request.is_unlisted, time::OffsetDateTime::now_utc()).await?;
 
             Ok(Some((id, stream_session, name)))
         } else {
