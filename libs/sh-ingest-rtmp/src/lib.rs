@@ -509,9 +509,6 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
 
     let sps = SeqParameterSet::from_bytes(&decode_nal(&record.sequence_parameter_sets[0].0[1..]))
         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
-    debug!("{:#?}", sps);
-
-    validate_sps(&sps)?;
 
     let (width, height) = sps.pixel_dimensions().unwrap();
 
@@ -531,20 +528,6 @@ fn get_codec_from_mp4(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<Codec
             },
         }),
     })
-}
-
-fn validate_sps(sps: &SeqParameterSet) -> anyhow::Result<()> {
-    if let Some(bitstream) = sps
-        .vui_parameters
-        .as_ref()
-        .and_then(|v| v.bitstream_restrictions.as_ref())
-    {
-        /*if bitstream.max_num_reorder_frames > 0 {
-            anyhow::bail!("B-frames are not allowed");
-        }*/
-    }
-
-    Ok(())
 }
 
 fn find_parameter_sets(bytes: &[u8]) -> ParameterSetContext {
