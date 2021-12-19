@@ -43,7 +43,7 @@
           {% for stream in streams %}
           <a href="/{{ stream.name }}">
             <div class="stream-card">
-              <img stream-id="{{ stream.name }}" class="stream-poster">
+              <img stream-id="{{ stream.name }}" class="stream-poster" src="/static/placeholder.png">
               <p><b>{{ stream.name }}</b> | {{ stream.viewers }} viewers</p>
             </div>
           </a>
