@@ -23,29 +23,26 @@ impl ScuffedStreamAuthService {
     async fn auth_ingest_request(
         &self,
         request: &IngestRequest,
-    ) -> anyhow::Result<Option<(i32, i32)>> {
-        debug!("Received auth request for '{}'", request.name);
-
+    ) -> anyhow::Result<Option<(i32, i32, String)>> {
         let conn = self.pool.get().await?;
 
         let id = conn
             .query_opt(
                 "
-SELECT id FROM account
-WHERE name = $1
-AND stream_key = $2
+SELECT id, name FROM account
+WHERE stream_key = $1
                 ",
-                &[&request.name, &request.stream_key],
+                &[&request.stream_key],
             )
             .await?;
 
-        let account_id = id.map(|r| r.get::<_, i32>(0));
+        let account = id.map(|r| (r.get::<_, i32>(0), r.get::<_, String>(1)));
 
-        if let Some(id) = account_id {
+        if let Some((id, name)) = account {
             let stream_session =
                 start_stream_session(&conn, id, time::OffsetDateTime::now_utc()).await?;
 
-            Ok(Some((id, stream_session)))
+            Ok(Some((id, stream_session, name)))
         } else {
             Ok(None)
         }
@@ -89,19 +86,20 @@ impl StreamAuthService for ScuffedStreamAuthService {
         let request = request.into_inner();
 
         match self.auth_ingest_request(&request).await {
-            Ok(Some((account_id, stream_session_id))) => {
+            Ok(Some((account_id, stream_session_id, account_name))) => {
                 debug!(
-                    "Created new stream session {} for ingest stream request '{}'",
-                    stream_session_id, request.name
+                    "Created new stream session {} for ingest stream request",
+                    stream_session_id
                 );
 
                 Ok(tonic::Response::new(IngestRequestReply {
                     streamer_id: account_id,
                     stream_session_id,
+                    streamer_name: account_name,
                 }))
             }
             Ok(None) => {
-                warn!("Failed to find a stream for '{}': either account name or stream key was not found", request.name);
+                warn!("Failed to authenticate stream key");
 
                 Err(tonic::Status::permission_denied("Invalid stream key"))
             }

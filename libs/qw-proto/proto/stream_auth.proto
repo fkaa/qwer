@@ -7,10 +7,6 @@ service StreamAuthService {
 }
 
 message IngestRequest {
-  // Required. Destination of the ingest, should correspond to account
-  // name in scuffed.
-  string name = 1;
-
   // Required. The stream key for the name field.
   string streamKey = 2;
 }
@@ -21,6 +17,8 @@ message IngestRequestReply {
   int32 streamerId = 1;
 
   int32 streamSessionId = 2;
+
+  string streamerName = 3;
 }
 
 message StreamJoinRequest {

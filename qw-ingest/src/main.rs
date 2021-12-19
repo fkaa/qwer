@@ -210,7 +210,7 @@ pub struct AppData {
 
 async fn rtmp_ingest(
     id: i32,
-    app: String,
+    name: String,
     request: sh_ingest_rtmp::RtmpRequest,
     sender: Sender<StreamStats>,
     repo: Arc<RwLock<StreamRepository>>,
@@ -243,11 +243,11 @@ async fn rtmp_ingest(
         parameter_sets,
     };
 
-    info!("Starting a stream at '{}'", app);
+    info!("Starting a stream for {} with id {}", name, id);
 
     repo.write()
         .unwrap()
-        .start_stream(id, app.clone(), queue.clone(), snapshot, meta);
+        .start_stream(id, name.clone(), queue.clone(), snapshot, meta);
 
     async fn stream(
         mut queue: MediaFrameQueue,
@@ -263,7 +263,7 @@ async fn rtmp_ingest(
         error!("Error while ingesting: {}", e);
     }
 
-    info!("Stopping a stream at '{}'", app);
+    info!("Stopping a stream at '{}'", name);
 
     repo.write().unwrap().stop_stream(id);
 
@@ -282,17 +282,17 @@ async fn listen_rtmp(
 
     loop {
         match listener.accept().await {
-            Ok((req, app, key)) => {
-                info!("Got a RTMP session from {} on stream '{}'", req.addr(), app);
+            Ok((req, _app, key)) => {
+                info!("Got a RTMP session from {}", req.addr());
 
                 let repo = data.stream_repo.clone();
                 let sender = data.stream_stat_sender.clone();
                 let mut client = client.clone();
 
                 tokio::spawn(async move {
-                    match authenticate_rtmp_stream(&mut client, &app, &key).await {
-                        Ok(id) => {
-                            if let Err(e) = rtmp_ingest(id, app, req, sender, repo).await {
+                    match authenticate_rtmp_stream(&mut client, &key).await {
+                        Ok((id, name)) => {
+                            if let Err(e) = rtmp_ingest(id, name, req, sender, repo).await {
                                 error!("Error while ingesting RTMP: {}", e);
                             }
                         }
@@ -311,16 +311,13 @@ async fn listen_rtmp(
 
 async fn authenticate_rtmp_stream(
     client: &mut StreamAuthServiceClient<Channel>,
-    app_name: &str,
     supplied_stream_key: &str,
-) -> anyhow::Result<i32> {
+) -> anyhow::Result<(i32, String)> {
     let request = IngestRequest {
-        name: app_name.into(),
         stream_key: supplied_stream_key.into(),
     };
-    let response = client.request_stream_ingest(request).await?;
-
-    Ok(response.into_inner().stream_session_id)
+    let response = client.request_stream_ingest(request).await?.into_inner();
+    Ok((response.stream_session_id, response.streamer_name))
 }
 
 pub async fn http_video(
