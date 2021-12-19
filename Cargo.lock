@@ -948,11 +948,14 @@ dependencies = [
 
 [[package]]
 name = "h264-reader"
-version = "0.4.0"
-source = "git+https://github.com/fkaa/h264-reader#daaa06d497e76306cfe373e31aafcb9a4da7d5fe"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8d87669bdeca3d51902f1bf1f2c71c8f514a8f3011d9b81e63719b374091da1"
 dependencies = [
  "bitreader",
+ "log",
  "memchr",
+ "rfc6381-codec 0.1.0",
 ]
 
 [[package]]
@@ -2020,6 +2023,17 @@ dependencies = [
 
 [[package]]
 name = "rfc6381-codec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4395f46a67f0d57c57f6a5361f3a9a0c0183a19cab3998892ecdc003de6d8037"
+dependencies = [
+ "four-cc",
+ "mp4ra-rust",
+ "mpeg4-audio-const",
+]
+
+[[package]]
+name = "rfc6381-codec"
 version = "0.1.1-dev"
 source = "git+https://github.com/dholroyd/rfc6381-codec#06ba2c402f46bba42697ad599603760189adb63f"
 dependencies = [
@@ -2255,7 +2269,7 @@ dependencies = [
  "futures",
  "log",
  "mpeg4-audio-const",
- "rfc6381-codec",
+ "rfc6381-codec 0.1.1-dev",
  "sh-fmp4",
  "sh-media",
  "tokio",

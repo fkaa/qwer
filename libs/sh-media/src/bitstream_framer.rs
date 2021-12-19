@@ -1,11 +1,14 @@
+use std::cell::RefCell;
+
 use h264_reader::{
     annexb::AnnexBReader,
-    nal::{GenericNalSwitch, NalHandler, NalHeader, UnitType},
+    nal::{NalHandler, NalHeader, NalSwitch, UnitType},
     Context,
 };
 
 use super::{BitstreamFraming, Frame, FrameWriteFilter, Stream};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use tracing::*;
 
 const THREE_BYTE_STARTCODE: [u8; 3] = [0, 0, 1];
 const FOUR_BYTE_STARTCODE: [u8; 4] = [0, 0, 0, 1];
@@ -30,7 +33,28 @@ fn parse_bitstream_length_field<F: Fn(&mut Bytes) -> usize>(
 
 /// Parses a H.26x bitstream framed in Annex B format (start codes) into NAL units.
 fn parse_bitstream_start_codes(bitstream: Bytes) -> Vec<Bytes> {
-    let s = GenericNalSwitch::new(NalFramer::new());
+    let mut s = NalSwitch::default(); // new(NalFramer::new());
+    s.put_handler(
+        UnitType::SliceLayerWithoutPartitioningNonIdr,
+        Box::new(RefCell::new(GenericNalHandler::with_capacity(1024 * 32))),
+    );
+    s.put_handler(
+        UnitType::SliceLayerWithoutPartitioningIdr,
+        Box::new(RefCell::new(GenericNalHandler::with_capacity(1024 * 512))),
+    );
+    s.put_handler(
+        UnitType::SEI,
+        Box::new(RefCell::new(GenericNalHandler::with_capacity(1024))),
+    );
+    s.put_handler(
+        UnitType::SeqParameterSet,
+        Box::new(RefCell::new(GenericNalHandler::with_capacity(32))),
+    );
+    s.put_handler(
+        UnitType::PicParameterSet,
+        Box::new(RefCell::new(GenericNalHandler::with_capacity(32))),
+    );
+
     let framing_context = NalFramerContext::new();
 
     let mut ctx = Context::new(framing_context);
@@ -118,11 +142,11 @@ fn convert_bitstream(
 
 pub fn is_video_nal_unit(nal: &Bytes) -> bool {
     matches!(
-        NalHeader::new(nal[0]).map(|h| h.nal_unit_type()),
-        Ok(UnitType::SeqParameterSet)
-            | Ok(UnitType::PicParameterSet)
-            | Ok(UnitType::SliceLayerWithoutPartitioningNonIdr)
-            | Ok(UnitType::SliceLayerWithoutPartitioningIdr)
+        nut_header(nal),
+        Some(UnitType::SeqParameterSet)
+            | Some(UnitType::PicParameterSet)
+            | Some(UnitType::SliceLayerWithoutPartitioningNonIdr)
+            | Some(UnitType::SliceLayerWithoutPartitioningIdr)
     )
 }
 
@@ -140,6 +164,40 @@ impl NalFramerContext {
         Self {
             nal_units: Vec::new(),
             current_nal_unit: Vec::new(),
+        }
+    }
+}
+
+struct GenericNalHandler {
+    capacity: usize,
+    nut: Option<BytesMut>,
+}
+
+impl GenericNalHandler {
+    fn with_capacity(size: usize) -> Self {
+        GenericNalHandler {
+            capacity: size,
+            nut: Some(BytesMut::with_capacity(size)),
+        }
+    }
+}
+
+impl NalHandler for GenericNalHandler {
+    type Ctx = NalFramerContext;
+
+    fn start(&mut self, ctx: &mut Context<Self::Ctx>, header: NalHeader) {
+        self.nut = Some(BytesMut::with_capacity(self.capacity));
+    }
+
+    fn push(&mut self, ctx: &mut Context<Self::Ctx>, buf: &[u8]) {
+        if let Some(ref mut nut) = &mut self.nut {
+            nut.extend(buf);
+        }
+    }
+
+    fn end(&mut self, ctx: &mut Context<Self::Ctx>) {
+        if let Some(nut) = self.nut.take() {
+            ctx.user_context.nal_units.push(nut);
         }
     }
 }
@@ -200,10 +258,10 @@ impl FrameWriteFilter for BitstreamFramerFilter {
         for stream in &mut streams {
             if let Some(bitstream_format) = stream.bitstream_format() {
                 if bitstream_format != self.target_framing {
-                    /*debug!(
-                        self.logger,
-                        "Converting from {:?} to {:?}", bitstream_format, self.target_framing
-                    );*/
+                    debug!(
+                        "Converting from {:?} to {:?}",
+                        bitstream_format, self.target_framing
+                    );
 
                     stream.set_bitstream_format(self.target_framing);
 
