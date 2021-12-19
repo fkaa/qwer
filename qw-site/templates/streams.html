@@ -55,7 +55,7 @@
     </section>
 
     <script type="text/javascript">
-      TRANSPORT_ADDRESS = "{{ transport_address }}";
+      TRANSPORT_ADDRESS = "{{ transport_address|safe }}";
     </script>
     <script src="/static/js/index2.bundle.js" type="text/javascript"></script>
   </body>

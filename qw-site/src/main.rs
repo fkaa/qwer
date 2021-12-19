@@ -62,7 +62,8 @@ where
 pub struct AppData {
     pub pool: Arc<PostgresPool>,
     pub session_service: Arc<AccountSessionService>,
-    pub transport_address: String,
+    pub stream_transport_address: String,
+    pub ingest_transport_address: String,
     pub smtp_server: String,
     pub smtp_user: String,
     pub smtp_pass: String,
@@ -102,7 +103,7 @@ async fn stream_page(
     Extension(data): Extension<Arc<AppData>>,
 ) -> Response<BoxBody> {
     let template = StreamTemplate {
-        transport_address: &data.transport_address,
+        transport_address: &data.stream_transport_address,
         stream: &stream,
     };
 
@@ -145,7 +146,7 @@ async fn streams_page(Extension(data): Extension<Arc<AppData>>) -> Response<BoxB
         .collect::<Vec<_>>();
 
     let template = StreamsTemplate {
-        transport_address: &data.transport_address,
+        transport_address: &data.ingest_transport_address,
         streams: &sessions,
     };
 
@@ -179,7 +180,8 @@ async fn run_migrations(
 }
 
 async fn start() -> anyhow::Result<()> {
-    let ingest_web_addr = env("INGEST_WEB_ADDR", "localhost:8080");
+    let ingest_addr = env("INGEST_WEB_ADDR", "localhost:8080");
+    let stream_addr = env("INGEST_STREAM_ADDR", "localhost:8080");
     let ingest_rpc_addr = env("INGEST_RPC_ADDR", "localhost:8081");
 
     let scuffed_rpc_addr = resolve_env_addr("QW_RPC_ADDR", "localhost:9082");
@@ -229,7 +231,8 @@ async fn start() -> anyhow::Result<()> {
     ));
 
     let data = AppData {
-        transport_address: ingest_web_addr,
+        ingest_transport_address: ingest_addr,
+        stream_transport_address: stream_addr,
         session_service,
         smtp_server,
         smtp_user,

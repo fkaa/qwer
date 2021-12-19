@@ -93,7 +93,7 @@
     </div>
 
     <script>
-      RTMP_MSE_STREAM="wss://{{ transport_address }}/transport/mse/{{ stream }}";
+      RTMP_MSE_STREAM="{{ transport_address|safe }}/transport/mse/{{ stream }}";
     </script>
     <script src="/static/js/index.bundle.js"></script>
   </body>

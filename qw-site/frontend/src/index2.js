@@ -8,7 +8,7 @@ async function loadStreamSnapshots() {
     for (let i = 0; i < images.length; i++) {
         let img = images[i];
 
-        img.src = await decoder.decode(`https://${TRANSPORT_ADDRESS}/snapshot/${img.getAttribute("stream-id")}`);
+        img.src = await decoder.decode(`${TRANSPORT_ADDRESS}/snapshot/${img.getAttribute("stream-id")}`);
     }
 }
 
