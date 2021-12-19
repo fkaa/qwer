@@ -223,7 +223,7 @@ async fn rtmp_ingest(
     let mut queue = MediaFrameQueue::new();
     let rtmp_filter = RtmpReadFilter::new(session);
     let rtmp_analyzer = FrameAnalyzerFilter::read(Box::new(rtmp_filter));
-    let bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(rtmp_analyzer), id, sender);
+    let bw_analyzer = BandwidthAnalyzerFilter::new(Box::new(rtmp_analyzer), id, true, sender);
 
     let snapshot = Arc::new(RwLock::new(None));
     let mut snapshot_provider =
@@ -336,6 +336,7 @@ pub async fn http_video(
         let bw_analyzer = Box::new(BandwidthAnalyzerFilter::new(
             Box::new(queue_receiver),
             guard.0,
+            false,
             sender,
         ));
         let (output_filter, bytes_rx) = ByteStreamWriteFilter::new();
@@ -433,7 +434,7 @@ async fn handle_websocket_video_response(socket: WebSocket, stream: String, data
 
         let sender = data.stream_stat_sender.clone();
         let mut bw_analyzer =
-            BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, sender);
+            BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, false, sender);
 
         if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut bw_analyzer).await {
             error!("{}", e);

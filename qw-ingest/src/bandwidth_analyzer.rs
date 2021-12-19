@@ -9,6 +9,7 @@ pub struct BandwidthAnalyzerFilter {
     filter: Box<dyn FrameReadFilter + Send + Unpin>,
     send: Sender<StreamStats>,
     last_report: Instant,
+    is_ingest: bool,
     stream_id: i32,
     bytes: u32,
 }
@@ -17,12 +18,14 @@ impl BandwidthAnalyzerFilter {
     pub fn new(
         filter: Box<dyn FrameReadFilter + Send + Unpin>,
         stream_id: i32,
+        is_ingest: bool,
         send: Sender<StreamStats>,
     ) -> Self {
         BandwidthAnalyzerFilter {
             filter,
             send,
             last_report: Instant::now(),
+            is_ingest,
             stream_id,
             bytes: 0,
         }
@@ -37,6 +40,7 @@ impl BandwidthAnalyzerFilter {
             if let Ok(_) = self.send.send(StreamStats {
                 stream_session_id: self.stream_id,
                 bytes_since_last_stats: self.bytes,
+                is_ingest: self.is_ingest,
             }) {
                 self.bytes = 0;
             }

@@ -42,6 +42,7 @@ message StreamReply {
   message StreamStats {
     int32 streamSessionId = 1;
     uint32 bytesSinceLastStats = 2;
+    bool isIngest = 3;
   }
 
   oneof StreamType {
