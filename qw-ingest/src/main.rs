@@ -1,5 +1,5 @@
 use axum::{
-    body::{self},
+    body::{self, boxed, Empty, StreamBody},
     extract::{
         ws::{WebSocket, WebSocketUpgrade},
         Extension, Path,
@@ -10,7 +10,11 @@ use axum::{
 };
 use futures::{future, Stream};
 use hyper::{Response, StatusCode};
-use tokio::sync::broadcast::{self, Receiver, Sender};
+use sh_fmp4::FragmentedMp4WriteFilter;
+use tokio::{
+    sync::broadcast::{self, Receiver, Sender},
+    task,
+};
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::transport::{Channel, Endpoint};
 use tracing::*;
@@ -26,7 +30,11 @@ use qw_proto::{
         StreamReply, StreamRequest,
     },
 };
-use sh_media::{FilterGraph, Frame, FrameAnalyzerFilter, MediaFrameQueue, MediaFrameQueueReceiver};
+use sh_media::{
+    wait_for_sync_frame, BitstreamFramerFilter, BitstreamFraming, ByteStreamWriteFilter,
+    ByteWriteFilter2, FilterGraph, Frame, FrameAnalyzerFilter, FrameReadFilter, FrameWriteFilter,
+    MediaFrameQueue, MediaFrameQueueReceiver,
+};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use std::{
@@ -281,6 +289,68 @@ async fn authenticate_rtmp_stream(
     Ok(response.into_inner().stream_session_id)
 }
 
+pub async fn http_video(
+    Path(stream): Path<String>,
+    Extension(data): Extension<Arc<AppData>>,
+) -> impl IntoResponse {
+    debug!("Received HTTP request for '{}'", stream);
+
+    if let Some((queue_receiver, guard)) = ViewGuard::attach(stream.clone(), &data) {
+        debug!("Found a stream at {}", stream);
+
+        let sender = data.stream_stat_sender.clone();
+        let bw_analyzer = Box::new(BandwidthAnalyzerFilter::new(
+            Box::new(queue_receiver),
+            guard.0,
+            sender,
+        ));
+        let (output_filter, bytes_rx) = ByteStreamWriteFilter::new();
+        let output_filter = Box::new(output_filter);
+
+        task::spawn(async move {
+            if let Err(e) = stream_http_video(bw_analyzer, output_filter, guard).await {
+                error!("{}", e);
+            }
+        });
+
+        boxed(StreamBody::new(bytes_rx))
+    } else {
+        debug!("Did not find a stream at {}", stream);
+
+        boxed(
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Empty::new())
+                .unwrap(),
+        )
+    }
+}
+
+async fn stream_http_video(
+    mut read: Box<dyn FrameReadFilter + Unpin + Send>,
+    output: Box<dyn ByteWriteFilter2 + Unpin + Send>,
+    _guard: ViewGuard,
+) -> anyhow::Result<()> {
+    // write
+    let fmp4_filter = Box::new(FragmentedMp4WriteFilter::new(output));
+    let write_analyzer = Box::new(FrameAnalyzerFilter::write(fmp4_filter));
+    let mut write = Box::new(BitstreamFramerFilter::new(
+        BitstreamFraming::FourByteLength,
+        write_analyzer,
+    ));
+
+    let streams = read.start().await?;
+    let first_frame = wait_for_sync_frame(&mut *read).await?;
+
+    write.start(streams).await?;
+    write.write(first_frame).await?;
+
+    loop {
+        let frame = read.read().await?;
+        write.write(frame).await?;
+    }
+}
+
 pub async fn websocket_video(
     ws: WebSocketUpgrade,
     Path(stream): Path<String>,
@@ -416,6 +486,7 @@ async fn start() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/transport/mse/:stream", get(websocket_video))
+        .route("/transport/http/:stream", get(http_video))
         .route("/snapshot/:stream", get(snapshot))
         .layer(AddExtensionLayer::new(data.clone()));
 
