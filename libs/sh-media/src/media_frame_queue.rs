@@ -63,7 +63,7 @@ impl MediaFrameQueue {
     }
 
     pub fn get_receiver(&self) -> MediaFrameQueueReceiver {
-        let (send, recv) = async_channel::bounded(50000);
+        let (send, recv) = async_channel::bounded(1024);
 
         // debug!(self.logger, "Adding frame queue target");
 
