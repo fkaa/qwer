@@ -11,9 +11,10 @@ use axum::{
 use futures::{future, Stream};
 use hyper::{Response, StatusCode};
 use sh_fmp4::FragmentedMp4WriteFilter;
+use sh_ingest_rtmp::RtmpRequest;
 use tokio::{
     sync::broadcast::{self, Receiver, Sender},
-    task,
+    task, net::{TcpListener, TcpStream}, time::timeout,
 };
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::transport::{Channel, Endpoint};
@@ -41,7 +42,7 @@ use std::{
     collections::HashMap,
     net::{SocketAddr, ToSocketAddrs},
     pin::Pin,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock}, time::Duration,
 };
 
 use crate::{
@@ -217,7 +218,7 @@ async fn rtmp_ingest(
 ) -> anyhow::Result<()> {
     use sh_ingest_rtmp::RtmpReadFilter;
 
-    let session = request.authenticate().await?;
+    let session = timeout(Duration::from_secs(5), request.authenticate()).await??;
     let rtmp_meta = session.stream_metadata().clone();
 
     let mut queue = MediaFrameQueue::new();
@@ -270,41 +271,50 @@ async fn rtmp_ingest(
     Ok(())
 }
 
+async fn process_rtmp_ingest(socket: TcpStream, addr: SocketAddr,
+    client: StreamAuthServiceClient<Channel>,
+    data: Arc<AppData>,
+) -> anyhow::Result<()> {
+    let (req, app, key) = timeout(Duration::from_secs(5), RtmpRequest::from_socket(socket, addr)).await??;
+
+    info!("Got a RTMP session from {} with app {}", req.addr(), app);
+
+    let repo = data.stream_repo.clone();
+    let sender = data.stream_stat_sender.clone();
+    let mut client = client.clone();
+    let is_public = app == "public";
+
+    let (id, name) =  authenticate_rtmp_stream(&mut client, &key, is_public).await?;
+
+    rtmp_ingest(id, name, req, sender, repo).await?;
+
+    Ok(())
+}
+
 async fn listen_rtmp(
     addr: SocketAddr,
     client: StreamAuthServiceClient<Channel>,
     data: Arc<AppData>,
 ) -> anyhow::Result<()> {
-    use sh_ingest_rtmp::RtmpListener;
-
     info!("Listening for RTMP at {}", addr);
-    let listener = RtmpListener::bind(addr).await?;
+
+    let listener = TcpListener::bind(addr).await?;
 
     loop {
         match listener.accept().await {
-            Ok((req, app, key)) => {
-                info!("Got a RTMP session from {} with app {}", req.addr(), app);
+            Ok((socket, addr)) => {
+                info!("Got a TCP connection from {}", addr);
 
-                let repo = data.stream_repo.clone();
-                let sender = data.stream_stat_sender.clone();
-                let mut client = client.clone();
-                let is_public = app == "public";
-
+                let client = client.clone();
+                let data = data.clone();
                 tokio::spawn(async move {
-                    match authenticate_rtmp_stream(&mut client, &key, is_public).await {
-                        Ok((id, name)) => {
-                            if let Err(e) = rtmp_ingest(id, name, req, sender, repo).await {
-                                error!("Error while ingesting RTMP: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to authenticate stream ingest: {}", e);
-                        }
+                    if let Err(e) = process_rtmp_ingest(socket, addr, client, data).await {
+                        error!("Failed to process RTMP ingest: {}", e);
                     }
                 });
             }
             Err(e) => {
-                error!("Failed to accept RTMP connection: {}", e);
+                error!("Failed to accept TCP connection: {}", e);
             }
         }
     }

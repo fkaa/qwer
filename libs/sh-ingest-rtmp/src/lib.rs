@@ -23,7 +23,7 @@ use rml_rtmp::{
     },
     time::RtmpTimestamp,
 };
-use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tracing::*;
 
 use sh_media::{
@@ -66,19 +66,17 @@ pub enum RtmpError {
     Error(#[from] anyhow::Error),
 }
 
-pub struct RtmpListener {
-    listener: TcpListener,
+pub struct RtmpRequest {
+    write: TcpWriteFilter,
+    read: TcpReadFilter,
+    addr: SocketAddr,
+    request_id: u32,
+    results: VecDeque<ServerSessionResult>,
+    server_session: ServerSession,
 }
 
-impl RtmpListener {
-    pub async fn bind(addr: SocketAddr) -> Result<Self, RtmpError> {
-        let listener = TcpListener::bind(addr).await?;
-
-        Ok(RtmpListener { listener })
-    }
-
-    pub async fn accept(&self) -> Result<(RtmpRequest, String, String), RtmpError> {
-        let (socket, addr) = self.listener.accept().await?;
+impl RtmpRequest {
+    pub async fn from_socket(socket: TcpStream, addr: SocketAddr) -> anyhow::Result<(Self, String, String)> {
         socket.set_nodelay(true)?;
 
         let (mut read, mut write) = split_tcp_filters(socket, 188 * 8);
@@ -96,18 +94,7 @@ impl RtmpListener {
 
         Ok((request, app, key))
     }
-}
 
-pub struct RtmpRequest {
-    write: TcpWriteFilter,
-    read: TcpReadFilter,
-    addr: SocketAddr,
-    request_id: u32,
-    results: VecDeque<ServerSessionResult>,
-    server_session: ServerSession,
-}
-
-impl RtmpRequest {
     pub async fn authenticate(mut self) -> anyhow::Result<RtmpSession> {
         let results = self
             .server_session
