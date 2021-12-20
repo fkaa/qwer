@@ -13,17 +13,33 @@
           <p class="title is-1">Login</p>
 
           <form action="/account/login" method="post">
-            <label class="label">Email</label>
-            <input class="input" type="email" name="email">
+            <div class="field">
+              <label class="label">Email</label>
+              <div class="control">
+                <input class="input" type="email" name="email">
+              </div>
+            </div>
 
-            <label class="label">Password</label>
-            <input class="input" type="password" name="password">
+            <div class="field">
+              <label class="label">Password</label>
+              <div class="control">
+                <input class="input" type="password" name="password">
+              </div>
+            </div>
 
             <input type="hidden" name="redirect" value="{{ redirect }}">
 
-            <button type="submit" class="button is-success">
-              Login
-            </button>
+            <div class="field">
+              <button type="submit" class="button is-success">
+                Login
+              </button>
+            </div>
+
+            <div class="field">
+              <div id="retry" class="hidden notification is-danger">
+                Invalid login. Please try again.
+              </div>
+            </div>
           </form>
       </div>
     </section>

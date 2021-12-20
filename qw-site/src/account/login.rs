@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use askama::Template;
 use axum::{
-    body::BoxBody,
+    body::{boxed, BoxBody, Empty},
     extract::{Extension, Form, FromRequest, Query, RequestParts, TypedHeader},
     response::{IntoResponse, Redirect},
 };
@@ -71,7 +71,11 @@ async fn login(
 
         Ok(response)
     } else {
-        Ok(Redirect::found(Uri::from_static("/#retry")).into_response())
+        Ok(Response::builder()
+            .status(StatusCode::FOUND)
+            .header("Location", "/account/login#retry")
+            .body(boxed(Empty::new()))
+            .unwrap())
     }
 }
 

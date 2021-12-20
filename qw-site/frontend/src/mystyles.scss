@@ -80,6 +80,10 @@ $card-radius: 0.5rem;
     display: none !important;
 }
 
+#retry:target {
+    display: block !important;
+}
+
 .overlay-text {
     font-weight: bold;
     font-size: 2em;
@@ -291,6 +295,7 @@ input[type="range"].volume-slider {
 @import "../node_modules/bulma/sass/elements/content.sass";
 @import "../node_modules/bulma/sass/elements/title.sass";
 @import "../node_modules/bulma/sass/elements/progress.sass";
+@import "../node_modules/bulma/sass/elements/notification.sass";
 @import "../node_modules/bulma/sass/elements/table.sass";
 @import "../node_modules/bulma/sass/form/_all.sass";
 @import "../node_modules/bulma/sass/components/navbar.sass";
