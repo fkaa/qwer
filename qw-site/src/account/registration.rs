@@ -39,14 +39,15 @@ pub(crate) async fn send_account_email_post_handler(
 async fn send_account_creation_email(
     data: &AppData,
     address: &str,
-    cookie: Cookies,
+    cookies: Cookies,
 ) -> anyhow::Result<Response<BoxBody>> {
     let mut conn = data.pool.get().await?;
 
     if data
         .session_service
-        .verify_auth_cookie_has_permissions(&conn, cookie, 0x1)
+        .verify_auth_cookie(&conn, cookies)
         .await?
+        .is_some()
     {
         send_account_creation_email_internal(&mut conn, data, address).await?;
 

@@ -3138,13 +3138,3 @@ checksum = "3a23fe958c70412687039c86f578938b4a0bb50ec788e96bce4d6ab00ddd5803"
 dependencies = [
  "dirs",
 ]
-
-[[patch.unused]]
-name = "av-bitstream"
-version = "0.1.2"
-source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"
-
-[[patch.unused]]
-name = "av-codec"
-version = "0.2.2"
-source = "git+https://github.com/rust-av/rust-av#ac21a6fbdebb84f3c9ac609ddbfbb0a482d2de55"

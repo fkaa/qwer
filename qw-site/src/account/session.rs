@@ -114,6 +114,7 @@ WHERE id = $1
     }
 }
 
+#[derive(Clone)]
 pub struct Cookies(CookieJar);
 
 impl Cookies {

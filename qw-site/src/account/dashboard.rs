@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::{
-    body::{boxed, BoxBody, Empty},
+    body::{boxed, BoxBody},
     extract::Extension,
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
 };
-use http::{Response, StatusCode};
+use http::{Response, Uri};
 
 use crate::{
     stream_service::get_stream_sessions, unwrap_response, AppData, AskamaTemplate,
@@ -149,7 +149,7 @@ async fn dashboard_page(
 
     if data
         .session_service
-        .verify_auth_cookie_has_permissions(&conn, cookies, 0x1)
+        .verify_auth_cookie_has_permissions(&conn, cookies.clone(), 0x1)
         .await?
     {
         let entries = get_all_dashboard_entries(&conn).await?;
@@ -157,10 +157,19 @@ async fn dashboard_page(
         let template = DashboardTemplate { entries };
 
         Ok(AskamaTemplate(&template).into_response())
+    } else if let Some(account_id) = data
+        .session_service
+        .verify_auth_cookie(&conn, cookies)
+        .await?
+    {
+        let entries = vec![get_dashboard_entry(&conn, account_id).await?];
+
+        let template = DashboardTemplate { entries };
+
+        Ok(AskamaTemplate(&template).into_response())
     } else {
-        Ok(Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(boxed(Empty::new()))
-            .unwrap())
+        Ok(Redirect::to(Uri::from_static("/account/login"))
+            .into_response()
+            .map(boxed))
     }
 }
