@@ -30,7 +30,7 @@ pub(crate) async fn account_page_get_handler(
         } else {
             Redirect::to(Uri::from_static("/account/login"))
                 .into_response()
-                .map(|b| boxed(b))
+                .map(boxed)
         }
     }))
 }

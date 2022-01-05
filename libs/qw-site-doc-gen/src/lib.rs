@@ -1,8 +1,12 @@
-use std::{fs::{self, File}, io::BufReader, path::{Path, PathBuf}};
+use std::{
+    fs::{self, File},
+    io::BufReader,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context;
 use askama::Template;
-use comrak::{ComrakOptions, markdown_to_html};
+use comrak::{markdown_to_html, ComrakOptions};
 use serde_json::Value;
 
 #[derive(askama::Template)]
@@ -20,18 +24,32 @@ struct MenuItem {
 }
 
 enum TreeItem {
-    Item { name: String, path: String, src_file: String, },
-    Menu { name: String, path: String, items: Vec<TreeItem>, },
+    Item {
+        name: String,
+        path: String,
+        src_file: String,
+    },
+    Menu {
+        name: String,
+        path: String,
+        items: Vec<TreeItem>,
+    },
 }
 
 fn conv(tree: &TreeItem) -> MenuItem {
     match tree {
-        TreeItem::Item { name, path, .. } => {
-            MenuItem { name: name.clone(), path: path.clone(), children: Vec::new() }
+        TreeItem::Item { name, path, .. } => MenuItem {
+            name: name.clone(),
+            path: path.clone(),
+            children: Vec::new(),
         },
         TreeItem::Menu { name, path, items } => {
             let children = items.iter().map(conv).collect::<Vec<_>>();
-            MenuItem { name: name.clone(), path: path.clone(), children }
+            MenuItem {
+                name: name.clone(),
+                path: path.clone(),
+                children,
+            }
         }
     }
 }
@@ -45,20 +63,28 @@ pub fn generate_help_directory(tree: &Path, output: &Path) -> anyhow::Result<Vec
     let menu_items = tree.iter().map(conv).collect::<Vec<_>>();
 
     for item in tree {
-        generate_help_item(&mut src_paths, &menu_items, tree_root.clone(), output.into(), &item)?;
+        generate_help_item(
+            &mut src_paths,
+            &menu_items,
+            tree_root.clone(),
+            output.into(),
+            &item,
+        )?;
     }
 
     Ok(src_paths)
 }
 
-fn generate_help_item(src_paths: &mut Vec<String>, menu_items: &[MenuItem], root_dir: PathBuf, dest_dir: PathBuf, item: &TreeItem) -> anyhow::Result<()> {
-    let mut dest_path = dest_dir.clone();
-
+fn generate_help_item(
+    src_paths: &mut Vec<String>,
+    menu_items: &[MenuItem],
+    mut src: PathBuf,
+    mut dest_path: PathBuf,
+    item: &TreeItem,
+) -> anyhow::Result<()> {
     match item {
         TreeItem::Item { path, src_file, .. } => {
-            dest_path.push(format!("{}", path));
-
-            let mut src = root_dir.clone();
+            dest_path.push(path.to_owned());
             src.push(src_file);
 
             let content = read_md_to_html(&src)?;
@@ -66,7 +92,7 @@ fn generate_help_item(src_paths: &mut Vec<String>, menu_items: &[MenuItem], root
 
             let template = HelpPageTemplate {
                 menu_items,
-                current_path: &path,
+                current_path: path,
                 content: &content,
             };
 
@@ -74,12 +100,12 @@ fn generate_help_item(src_paths: &mut Vec<String>, menu_items: &[MenuItem], root
 
             fs::create_dir_all(dest_path.parent().unwrap())?;
             fs::write(dest_path, content)?;
-        },
+        }
         TreeItem::Menu { items, .. } => {
             // dest_path.push(format!("{}/", path));
 
             for item in items {
-                generate_help_item(src_paths, menu_items, root_dir.clone(), dest_path.clone(), item)?;
+                generate_help_item(src_paths, menu_items, src.clone(), dest_path.clone(), item)?;
             }
         }
     }
@@ -114,7 +140,11 @@ fn parse_item(value: &Value) -> anyhow::Result<TreeItem> {
     let path = value["path"].as_str().unwrap();
 
     if let Some(obj) = value.get("src").and_then(|v| v.as_str()) {
-        return Ok(TreeItem::Item { name: title.to_string(), path: path.to_string(), src_file: obj.to_string() });
+        return Ok(TreeItem::Item {
+            name: title.to_string(),
+            path: path.to_string(),
+            src_file: obj.to_string(),
+        });
     }
 
     if let Some(obj) = value.get("children").and_then(|v| v.as_array()) {
@@ -124,7 +154,11 @@ fn parse_item(value: &Value) -> anyhow::Result<TreeItem> {
             children.push(parse_item(child)?);
         }
 
-        return Ok(TreeItem::Menu { name: title.to_string(), path: path.to_string(), items: children });
+        return Ok(TreeItem::Menu {
+            name: title.to_string(),
+            path: path.to_string(),
+            items: children,
+        });
     }
 
     anyhow::bail!("unknown")

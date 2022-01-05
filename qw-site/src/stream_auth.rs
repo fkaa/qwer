@@ -39,8 +39,13 @@ WHERE stream_key = $1
         let account = id.map(|r| (r.get::<_, i32>(0), r.get::<_, String>(1)));
 
         if let Some((id, name)) = account {
-            let stream_session =
-                start_stream_session(&conn, id, request.is_unlisted, time::OffsetDateTime::now_utc()).await?;
+            let stream_session = start_stream_session(
+                &conn,
+                id,
+                request.is_unlisted,
+                time::OffsetDateTime::now_utc(),
+            )
+            .await?;
 
             Ok(Some((id, stream_session, name)))
         } else {

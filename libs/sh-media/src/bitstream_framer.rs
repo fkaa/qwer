@@ -91,7 +91,7 @@ fn frame_nal_units_with_start_codes<T: AsRef<[u8]>>(nal_units: &[T], codes: &[u8
         let slice = nut.as_ref();
 
         bitstream.extend_from_slice(codes);
-        bitstream.extend_from_slice(&slice[..]);
+        bitstream.extend_from_slice(slice);
     }
 
     bitstream
@@ -108,7 +108,7 @@ fn frame_nal_units_with_length<F: Fn(&mut dyn BufMut, usize), T: AsRef<[u8]>>(
         let slice = nut.as_ref();
 
         write(&mut bitstream, slice.len());
-        bitstream.extend_from_slice(&slice[..]);
+        bitstream.extend_from_slice(slice);
     }
 
     bitstream

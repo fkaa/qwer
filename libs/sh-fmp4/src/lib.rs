@@ -40,7 +40,7 @@ use av_mp4::boxes::{
     vmhd::VideoMediaHeaderBox,
 };
 
-use bytes::{BytesMut, BufMut};
+use bytes::{BufMut, BytesMut};
 use sh_media::{
     ByteWriteFilter2, CodecTypeInfo, Frame, FrameDependency, FrameWriteFilter, MediaTime, Stream,
     VideoCodecSpecificInfo,
@@ -72,9 +72,7 @@ pub fn single_frame_fmp4(frame: Frame) -> anyhow::Result<Vec<u8>> {
                     composition_time_offset: None,
                 }],
             )],
-            Some(TrackFragmentBaseMediaDecodeTimeBox::new(
-                0,
-            )),
+            Some(TrackFragmentBaseMediaDecodeTimeBox::new(0)),
         ),
     );
 
@@ -157,11 +155,11 @@ impl FragmentedMp4WriteFilter {
         let prev_time = self
             .prev_times
             .entry(frame.stream.id)
-            .or_insert(frame.time.clone());
+            .or_insert_with(|| frame.time.clone());
         let start_time = self
             .start_times
             .entry(frame.stream.id)
-            .or_insert(frame.time.clone());
+            .or_insert_with(|| frame.time.clone());
 
         let media_duration = frame.time.clone() - prev_time.clone();
         let base_offset = prev_time.clone() - start_time.clone();
@@ -233,7 +231,7 @@ impl FrameWriteFilter for FragmentedMp4WriteFilter {
         let start_time = self
             .start_times
             .entry(frame.stream.id)
-            .or_insert(frame.time.clone());
+            .or_insert_with(|| frame.time.clone());
 
         let _duration: chrono::Duration = frame.time.since(start_time).into();
 

@@ -29,7 +29,7 @@ pub(crate) async fn login_page_get_handler(
     let redirect = params
         .get("redirect")
         .cloned()
-        .unwrap_or(String::from("account"));
+        .unwrap_or_else(|| String::from("account"));
 
     let template = AccountLoginTemplate { redirect };
 
@@ -58,10 +58,10 @@ async fn login(
     _host: Host,
     user_agent: Option<TypedHeader<UserAgent>>,
 ) -> anyhow::Result<Response<BoxBody>> {
-    if let Some(cookie) = verify_login(&data, &form, user_agent.map(|h| h.0)).await? {
+    if let Some(cookie) = verify_login(data, form, user_agent.map(|h| h.0)).await? {
         let target = format!("/{}", form.redirect)
             .parse::<Uri>()
-            .or("/account".parse::<Uri>())?;
+            .or_else(|_| "/account".parse::<Uri>())?;
 
         let mut response = Redirect::to(target).into_response();
         response.headers_mut().insert(

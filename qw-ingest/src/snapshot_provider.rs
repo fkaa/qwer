@@ -1,4 +1,7 @@
-use std::{sync::{Arc, RwLock}, time::{Duration, Instant}};
+use std::{
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
 
 use sh_media::{Frame, FrameReadFilter, Stream};
 
@@ -30,7 +33,7 @@ impl SnapshotProviderFilter {
                         self.last_report = Some(now);
                         *self.snapshot.write().unwrap() = Some(frame.clone());
                     }
-                },
+                }
                 None => {
                     self.last_report = Some(now);
                     *self.snapshot.write().unwrap() = Some(frame.clone());

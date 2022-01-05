@@ -160,7 +160,12 @@ WHERE secret = $1
 INSERT INTO account (name, password_hash, email, stream_key)
 VALUES ($1, $2, $3, $4)
 ",
-        &[&form.account_name, &phc_string, &form.email, &generate_secret(32)],
+        &[
+            &form.account_name,
+            &phc_string,
+            &form.email,
+            &generate_secret(32),
+        ],
     )
     .await?;
 

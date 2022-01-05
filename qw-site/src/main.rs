@@ -226,10 +226,7 @@ async fn start() -> anyhow::Result<()> {
     let web_url = env::var("QW_WEB_URL").context("QW_WEB_URL not set")?;
     let site_domain = env::var("QW_DOMAIN").context("QW_DOMAIN not set")?;
 
-    let session_service = Arc::new(AccountSessionService::new(
-        site_domain.clone(),
-        &secret_key,
-    ));
+    let session_service = Arc::new(AccountSessionService::new(site_domain.clone(), &secret_key));
 
     let data = AppData {
         ingest_transport_address: ingest_addr,
@@ -318,8 +315,10 @@ fn spawn_stream_info_loop(ingest_rpc_addr: String, send: Sender<StreamType>) {
     tokio::spawn(async move {
         use backoff::{future::retry, ExponentialBackoff};
 
-        let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(Duration::from_secs_f64(10.0));
+        let backoff = ExponentialBackoff {
+            max_elapsed_time: Some(Duration::from_secs_f64(10.0)),
+            ..Default::default()
+        };
 
         let _ = retry(backoff, || async {
             if let Err(e) = stream_info_listen(ingest_rpc_addr.clone(), send.clone()).await {
@@ -344,7 +343,7 @@ fn resolve_env_addr(var: &str, default: &str) -> SocketAddr {
         .to_socket_addrs()
         .unwrap()
         .next()
-        .expect(&format!("Failed to resolve {}", var))
+        .unwrap_or_else(|| panic!("Failed to resolve {}", var))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -105,11 +105,7 @@ pub struct VideoCodecInfo {
 
 impl VideoCodecInfo {
     pub fn parameter_sets(&self) -> Option<Vec<u8>> {
-        let VideoCodecSpecificInfo::H264 {
-            sps,
-            pps,
-            ..
-        } = &self.extra;
+        let VideoCodecSpecificInfo::H264 { sps, pps, .. } = &self.extra;
 
         let nuts = [sps.as_slice(), pps.as_slice()];
 
@@ -270,8 +266,7 @@ impl Stream {
             }
     }*/
     pub fn parameter_sets(&self) -> Option<Vec<u8>> {
-        if let CodecTypeInfo::Video(info) = &self.codec.properties
-        {
+        if let CodecTypeInfo::Video(info) = &self.codec.properties {
             info.parameter_sets()
         } else {
             None

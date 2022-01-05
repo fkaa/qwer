@@ -21,8 +21,7 @@ use crate::{unwrap_response, AppData, PostgresConnection};
 
 use super::session::Cookies;
 
-const SECRET_CHARSET: &'static [u8; 62] =
-    b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const SECRET_CHARSET: &[u8; 62] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 #[derive(Deserialize)]
 pub(crate) struct SendAccountEmail {
@@ -53,7 +52,7 @@ async fn send_account_creation_email(
 
         Ok(Redirect::to(Uri::from_static("/account/dashboard"))
             .into_response()
-            .map(|b| boxed(b)))
+            .map(boxed))
     } else {
         Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
@@ -63,8 +62,8 @@ async fn send_account_creation_email(
 }
 
 fn generate_activation_secret(dest: &mut [u8; 32]) {
-    for i in 0..32 {
-        dest[i] = SECRET_CHARSET[fastrand::usize(..SECRET_CHARSET.len())];
+    for c in dest.iter_mut() {
+        *c = SECRET_CHARSET[fastrand::usize(..SECRET_CHARSET.len())];
     }
 }
 

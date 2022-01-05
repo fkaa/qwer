@@ -1,5 +1,5 @@
 use qw_proto::stream_info::stream_reply::StreamStats;
-use tokio::sync::broadcast::{Sender};
+use tokio::sync::broadcast::Sender;
 
 use std::time::{Duration, Instant};
 
@@ -37,11 +37,15 @@ impl BandwidthAnalyzerFilter {
         self.bytes += frame.buffer.len() as u32;
 
         if now - self.last_report > Duration::from_secs(5) {
-            if let Ok(_) = self.send.send(StreamStats {
-                stream_session_id: self.stream_id,
-                bytes_since_last_stats: self.bytes,
-                is_ingest: self.is_ingest,
-            }) {
+            if self
+                .send
+                .send(StreamStats {
+                    stream_session_id: self.stream_id,
+                    bytes_since_last_stats: self.bytes,
+                    is_ingest: self.is_ingest,
+                })
+                .is_ok()
+            {
                 self.bytes = 0;
             }
 

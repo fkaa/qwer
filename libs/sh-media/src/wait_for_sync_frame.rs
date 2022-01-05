@@ -43,7 +43,7 @@ impl WaitForSyncFrameFilter {
 #[async_trait::async_trait]
 impl FrameWriteFilter for WaitForSyncFrameFilter {
     async fn start(&mut self, streams: Vec<Stream>) -> anyhow::Result<()> {
-        self.streams = streams.clone();
+        self.streams = streams;
         Ok(())
     }
 

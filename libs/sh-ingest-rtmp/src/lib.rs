@@ -76,7 +76,10 @@ pub struct RtmpRequest {
 }
 
 impl RtmpRequest {
-    pub async fn from_socket(socket: TcpStream, addr: SocketAddr) -> anyhow::Result<(Self, String, String)> {
+    pub async fn from_socket(
+        socket: TcpStream,
+        addr: SocketAddr,
+    ) -> anyhow::Result<(Self, String, String)> {
         socket.set_nodelay(true)?;
 
         let (mut read, mut write) = split_tcp_filters(socket, 188 * 8);
@@ -99,10 +102,9 @@ impl RtmpRequest {
         let results = self
             .server_session
             .accept_request(self.request_id)
-            .map_err(|e| RtmpError::ServerSession(e))?;
+            .map_err(RtmpError::ServerSession)?;
 
         self.results.extend(results);
-
 
         let (mut rtmp_tx, rtmp_rx) = channel(500);
 
@@ -168,16 +170,11 @@ async fn wait_for_metadata(
         for res in rtmp_server_session.handle_input(&bytes).map_err(|e| e)? {
             match res {
                 ServerSessionResult::OutboundResponse(pkt) => rtmp_tx.send(pkt).await?,
-                ServerSessionResult::RaisedEvent(evt) => match evt {
-                    ServerSessionEvent::StreamMetadataChanged {
-                        app_name: _,
-                        stream_key: _,
-                        metadata,
-                    } => {
-                        return Ok(metadata);
-                    }
-                    _ => {}
-                },
+                ServerSessionResult::RaisedEvent(ServerSessionEvent::StreamMetadataChanged {
+                    app_name: _,
+                    stream_key: _,
+                    metadata,
+                }) => return Ok(metadata),
                 _ => {}
             }
         }
@@ -252,7 +249,7 @@ impl RtmpReadFilter {
         self.audio_stream = Some(Stream {
             id: 1,
             codec: Arc::new(codec_info),
-            timebase: RTMP_AAC_TIMEBASE.clone(),
+            timebase: RTMP_AAC_TIMEBASE,
         });
 
         Ok(())
@@ -272,7 +269,7 @@ impl RtmpReadFilter {
         self.video_stream = Some(Stream {
             id: 0,
             codec: Arc::new(codec_info),
-            timebase: RTMP_TIMEBASE.clone(),
+            timebase: RTMP_TIMEBASE,
         });
 
         Ok(())
@@ -290,14 +287,17 @@ impl RtmpReadFilter {
             self.prev_video_time = Some(timestamp);
         }
 
-        let diff = timestamp - self.prev_video_time.unwrap_or(RtmpTimestamp::new(0));
+        let diff = timestamp
+            - self
+                .prev_video_time
+                .unwrap_or_else(|| RtmpTimestamp::new(0));
 
         self.video_time += diff.value as u64;
 
         let time = MediaTime {
             pts: self.video_time,
             dts: None,
-            timebase: RTMP_TIMEBASE.clone(),
+            timebase: RTMP_TIMEBASE,
         };
 
         let frame = Frame {
@@ -331,14 +331,17 @@ impl RtmpReadFilter {
             self.prev_audio_time = Some(timestamp);
         }
 
-        let diff = timestamp - self.prev_audio_time.unwrap_or(RtmpTimestamp::new(0));
+        let diff = timestamp
+            - self
+                .prev_audio_time
+                .unwrap_or_else(|| RtmpTimestamp::new(0));
 
         self.audio_time += diff.value as u64;
 
         let time = MediaTime {
             pts: self.audio_time,
             dts: None,
-            timebase: RTMP_TIMEBASE.clone(),
+            timebase: RTMP_TIMEBASE,
         };
 
         let time = time.in_base(RTMP_AAC_TIMEBASE);
@@ -447,7 +450,7 @@ impl FrameReadFilter for RtmpReadFilter {
 
         Ok(std::array::IntoIter::new(streams)
             .into_iter()
-            .filter_map(|x| x)
+            .flatten()
             .collect())
     }
 
@@ -457,11 +460,11 @@ impl FrameReadFilter for RtmpReadFilter {
 }
 
 fn parse_video_tag(data: &[u8]) -> anyhow::Result<(flvparse::VideoTag, flvparse::AvcVideoPacket)> {
-    let tag = flvparse::VideoTag::parse(&data, data.len())
+    let tag = flvparse::VideoTag::parse(data, data.len())
         .map(|(_, t)| t)
         .map_err(|_| RtmpError::ParseVideoTag)?;
 
-    let packet = flvparse::avc_video_packet(&tag.body.data, tag.body.data.len())
+    let packet = flvparse::avc_video_packet(tag.body.data, tag.body.data.len())
         .map(|(_, p)| p)
         .map_err(|_| RtmpError::ParseAvcPacket)?;
 
@@ -469,7 +472,7 @@ fn parse_video_tag(data: &[u8]) -> anyhow::Result<(flvparse::VideoTag, flvparse:
 }
 
 fn parse_audio_tag(data: &[u8]) -> anyhow::Result<flvparse::AudioTag> {
-    let tag = flvparse::AudioTag::parse(&data, data.len())
+    let tag = flvparse::AudioTag::parse(data, data.len())
         .map(|(_, t)| t)
         .map_err(|_| RtmpError::ParseAudioTag)?;
 
@@ -477,7 +480,7 @@ fn parse_audio_tag(data: &[u8]) -> anyhow::Result<flvparse::AudioTag> {
 }
 
 fn get_codec_from_nalu(packet: &flvparse::AvcVideoPacket) -> anyhow::Result<CodecInfo> {
-    let parameter_sets = find_parameter_sets(&packet.avc_data);
+    let parameter_sets = find_parameter_sets(packet.avc_data);
     let codec_info = get_video_codec_info(parameter_sets)?;
 
     Ok(codec_info)
@@ -672,11 +675,11 @@ async fn process(
     // Create the RTMP session
     let config = ServerSessionConfig::new();
     let (mut session, initial_results) =
-        ServerSession::new(config).map_err(|e| RtmpError::ServerSession(e))?;
+        ServerSession::new(config).map_err(RtmpError::ServerSession)?;
 
     let results = session
         .handle_input(&remaining)
-        .map_err(|e| RtmpError::ServerSession(e))?;
+        .map_err(RtmpError::ServerSession)?;
 
     let mut r = VecDeque::new();
     let mut stream_info = None;
@@ -699,7 +702,7 @@ async fn process(
                         r.extend(
                             session
                                 .accept_request(request_id)
-                                .map_err(|e| RtmpError::ServerSession(e))?,
+                                .map_err(RtmpError::ServerSession)?,
                         );
 
                         debug!("Accepted connection request");
@@ -728,7 +731,7 @@ async fn process(
         let bytes = read.read().await?;
         let results = session
             .handle_input(&bytes)
-            .map_err(|e| RtmpError::ServerSession(e))?;
+            .map_err(RtmpError::ServerSession)?;
         r.extend(results);
     }
 }

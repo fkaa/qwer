@@ -113,10 +113,10 @@ impl FrameAnalyzerFilter {
         if let Some(_report) = self
             .metrics
             .entry(stream_id)
-            .or_insert(StreamMetrics::new())
-            .add(&frame)
+            .or_insert_with(StreamMetrics::new)
+            .add(frame)
         {
-            if self.streams.iter().find(|s| s.id == stream_id).is_some() {
+            if self.streams.iter().any(|s| s.id == stream_id) {
                 let _action = if matches!(self.filter, ReadOrWriteFilter::Read(_)) {
                     "reading"
                 } else {

@@ -2,7 +2,7 @@ use super::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
 use std::sync::{Arc, Mutex};
 
 /// A queue which broadcasts [`Frame`] to multiple readers.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MediaFrameQueue {
     // FIXME: alternative to mutex here?
     targets: Arc<Mutex<Vec<async_channel::Sender<Frame>>>>,
@@ -11,10 +11,7 @@ pub struct MediaFrameQueue {
 
 impl MediaFrameQueue {
     pub fn new() -> Self {
-        MediaFrameQueue {
-            targets: Arc::new(Mutex::new(Vec::new())),
-            streams: Arc::new(Mutex::new(Vec::new())),
-        }
+        Self::default()
     }
 
     pub fn push(&self, frame: Frame) {
@@ -27,11 +24,12 @@ impl MediaFrameQueue {
 
         debug!("Queue buffers: {}", lens.join(","));*/
 
+        #[allow(clippy::needless_collect)]
         let targets_to_remove = targets
             .iter()
             .map(|send| send.try_send(frame.clone()))
+            .filter_map(|r| r.err())
             .enumerate()
-            .filter_map(|(i, r)| r.err().map(|e| (i, e)))
             .collect::<Vec<_>>();
 
         for (idx, result) in targets_to_remove.into_iter().rev() {

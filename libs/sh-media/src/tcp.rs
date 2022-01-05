@@ -67,7 +67,7 @@ impl ByteReadFilter for TcpReadFilter {
                         return Err(anyhow::anyhow!("EOS!"));
                     }
 
-                    return Ok(Bytes::copy_from_slice(&mut self.buf[..n]));
+                    return Ok(Bytes::copy_from_slice(&self.buf[..n]));
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;

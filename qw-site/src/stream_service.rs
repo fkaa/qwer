@@ -105,7 +105,12 @@ INSERT INTO stream_metadata (stream_session_id, encoder, video_bitrate_kbps, par
 VALUES ($1, $2, $3, $4)
 ON CONFLICT DO NOTHING
             ",
-            &[&stream_session_id, &meta.video_encoder, &meta.video_bitrate_kbps.map(|b| b as i32), &meta.parameter_sets],
+            &[
+                &stream_session_id,
+                &meta.video_encoder,
+                &meta.video_bitrate_kbps.map(|b| b as i32),
+                &meta.parameter_sets,
+            ],
         )
         .await?;
 

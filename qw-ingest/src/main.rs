@@ -13,8 +13,10 @@ use hyper::{Response, StatusCode};
 use sh_fmp4::FragmentedMp4WriteFilter;
 use sh_ingest_rtmp::RtmpRequest;
 use tokio::{
+    net::{TcpListener, TcpStream},
     sync::broadcast::{self, Receiver, Sender},
-    task, net::{TcpListener, TcpStream}, time::timeout,
+    task,
+    time::timeout,
 };
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::transport::{Channel, Endpoint};
@@ -42,7 +44,8 @@ use std::{
     collections::HashMap,
     net::{SocketAddr, ToSocketAddrs},
     pin::Pin,
-    sync::{Arc, RwLock}, time::Duration,
+    sync::{Arc, RwLock},
+    time::Duration,
 };
 
 use crate::{
@@ -99,10 +102,10 @@ impl StreamInfo for StreamInfoService {
             .unwrap()
             .subscribe(self.data.stream_stat_sender.subscribe());
 
-        let event_stream = futures::stream::iter(events).map(|e| Some(e));
+        let event_stream = futures::stream::iter(events).map(Some);
 
         let stream = event_stream.chain(stream).map(|msg| {
-            msg.ok_or(tonic::Status::aborted("stream overflowed"))
+            msg.ok_or_else(|| tonic::Status::aborted("stream overflowed"))
                 .map(|msg| StreamReply {
                     stream_type: Some(msg),
                 })
@@ -190,7 +193,7 @@ impl StreamRepository {
 
         let event_stream = BroadcastStream::new(recv).map(|r| r.ok());
         let stream_stats =
-            BroadcastStream::new(stream_stats).map(|s| s.map(|s| StreamType::StreamStats(s)).ok());
+            BroadcastStream::new(stream_stats).map(|s| s.map(StreamType::StreamStats).ok());
         let merged_stream = tokio_stream::StreamExt::merge(event_stream, stream_stats);
 
         (events, merged_stream)
@@ -199,6 +202,12 @@ impl StreamRepository {
     fn send_event(&self, event: StreamType) {
         debug!("Sending event: {:?}", event);
         let _ = self.send.send(event);
+    }
+}
+
+impl Default for StreamRepository {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -271,11 +280,17 @@ async fn rtmp_ingest(
     Ok(())
 }
 
-async fn process_rtmp_ingest(socket: TcpStream, addr: SocketAddr,
+async fn process_rtmp_ingest(
+    socket: TcpStream,
+    addr: SocketAddr,
     client: StreamAuthServiceClient<Channel>,
     data: Arc<AppData>,
 ) -> anyhow::Result<()> {
-    let (req, app, key) = timeout(Duration::from_secs(5), RtmpRequest::from_socket(socket, addr)).await??;
+    let (req, app, key) = timeout(
+        Duration::from_secs(5),
+        RtmpRequest::from_socket(socket, addr),
+    )
+    .await??;
 
     info!("Got a RTMP session from {} with app {}", req.addr(), app);
 
@@ -284,7 +299,7 @@ async fn process_rtmp_ingest(socket: TcpStream, addr: SocketAddr,
     let mut client = client.clone();
     let is_public = app == "public";
 
-    let (id, name) =  authenticate_rtmp_stream(&mut client, &key, is_public).await?;
+    let (id, name) = authenticate_rtmp_stream(&mut client, &key, is_public).await?;
 
     rtmp_ingest(id, name, req, sender, repo).await?;
 
@@ -434,7 +449,7 @@ impl Drop for ViewGuard {
             .stream_repo
             .write()
             .unwrap()
-            .viewer_disconnect(self.0.clone());
+            .viewer_disconnect(self.0);
     }
 }
 
@@ -496,7 +511,7 @@ fn resolve_env_addr(var: &str, default: &str) -> SocketAddr {
         .to_socket_addrs()
         .unwrap()
         .next()
-        .expect(&format!("Failed to resolve {}", var))
+        .unwrap_or_else(|| panic!("Failed to resolve {}", var))
 }
 
 async fn start() -> anyhow::Result<()> {
