@@ -5,17 +5,17 @@ use askama::Template;
 use axum::{
     body::{boxed, BoxBody, Empty},
     extract::{Extension, Form, FromRequest, Query, RequestParts, TypedHeader},
+    http::{
+        header::{REFERER, SET_COOKIE},
+        HeaderValue, Response, StatusCode, Uri,
+    },
     response::{IntoResponse, Redirect},
 };
 use cookie::Cookie;
 use headers::{Host, UserAgent};
-use http::{
-    header::{REFERER, SET_COOKIE},
-    HeaderValue, Response, StatusCode, Uri,
-};
 use serde::Deserialize;
 
-use crate::{unwrap_response, AppData, AskamaTemplate};
+use crate::{AppData, AskamaTemplate};
 
 #[derive(Template)]
 #[template(path = "login.html")]
@@ -48,8 +48,8 @@ pub(crate) async fn login_account_post_handler(
     Extension(data): Extension<Arc<AppData>>,
     TypedHeader(host): TypedHeader<Host>,
     user_agent: Option<TypedHeader<UserAgent>>,
-) -> Response<BoxBody> {
-    unwrap_response(login(&data, &form, host, user_agent).await)
+) -> crate::Result<Response<BoxBody>> {
+    Ok(login(&data, &form, host, user_agent).await?)
 }
 
 async fn login(

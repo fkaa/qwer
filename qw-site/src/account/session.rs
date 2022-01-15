@@ -1,9 +1,11 @@
 use std::iter;
 
-use axum::extract::{FromRequest, RequestParts};
+use axum::{
+    extract::{FromRequest, RequestParts},
+    http::{header::COOKIE, StatusCode},
+};
 use cookie::{Cookie, CookieJar, Key, SameSite};
 use headers::UserAgent;
-use http::{header::COOKIE, StatusCode};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tracing::*;
 

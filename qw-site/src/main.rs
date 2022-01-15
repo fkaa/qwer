@@ -1,17 +1,17 @@
 use account::session::AccountSessionService;
 use axum::{
-    body::{boxed, Body, BoxBody, Bytes, Full, HttpBody},
+    body::{self, Body, BoxBody},
     extract::{Extension, Path},
-    response::{IntoResponse, Redirect},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
     routing::get,
-    AddExtensionLayer, BoxError, Router,
+    AddExtensionLayer, Router,
 };
 
 use anyhow::Context;
 use askama::Template;
 use bb8::ManageConnection;
 use futures::{future, StreamExt};
-use http::{Response, StatusCode};
 
 use tokio::sync::mpsc::{self, Sender};
 use tonic::transport::Endpoint;
@@ -44,20 +44,6 @@ pub type PostgresConnection<'a> = bb8::PooledConnection<'a, PostgresManager>;
 
 refinery::embed_migrations!("./migrations");
 
-pub fn unwrap_response<B>(result: anyhow::Result<Response<B>>) -> Response<BoxBody>
-where
-    B: HttpBody<Data = Bytes> + Send + 'static,
-    B::Error: Into<BoxError>,
-{
-    match result {
-        Ok(resp) => resp.map(|b| boxed(b)),
-        Err(e) => Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(boxed(Full::from(format!("{:?}", e))))
-            .unwrap(),
-    }
-}
-
 #[derive(Clone)]
 pub struct AppData {
     pub pool: Arc<PostgresPool>,
@@ -76,17 +62,19 @@ pub(crate) struct AskamaTemplate<'a, T>(&'a T);
 
 impl<'a, T: askama::Template> IntoResponse for AskamaTemplate<'a, T> {
     fn into_response(self) -> Response<BoxBody> {
+        use askama::DynTemplate;
+
         let mut buffer = String::with_capacity(self.0.size_hint());
         if let Err(e) = self.0.render_into(&mut buffer) {
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(boxed(Body::from(format!("{:?}", e))))
+                .body(body::boxed(Body::from(format!("{:?}", e))))
                 .unwrap();
         }
 
         Response::builder()
             .status(StatusCode::OK)
-            .body(boxed(Body::from(buffer)))
+            .body(body::boxed(Body::from(buffer)))
             .unwrap()
     }
 }
@@ -346,7 +334,7 @@ fn resolve_env_addr(var: &str, default: &str) -> SocketAddr {
         .unwrap_or_else(|| panic!("Failed to resolve {}", var))
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = dotenv::dotenv();
 
     let filter = EnvFilter::try_from_default_env()
@@ -364,4 +352,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .block_on(async { start().await })?;
 
     Ok(())
+}
+
+type Result<T> = std::result::Result<T, QwerError>;
+
+#[derive(Debug)]
+pub struct QwerError(anyhow::Error);
+
+impl From<anyhow::Error> for QwerError {
+    fn from(e: anyhow::Error) -> Self {
+        Self(e)
+    }
+}
+
+impl IntoResponse for QwerError {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(body::boxed(body::Full::from(self.0.to_string())))
+            .unwrap()
+    }
 }

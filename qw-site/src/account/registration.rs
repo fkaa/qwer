@@ -5,9 +5,9 @@ use ascii::AsciiStr;
 use axum::{
     body::{boxed, BoxBody, Empty},
     extract::{Extension, Form},
+    http::{Response, StatusCode, Uri},
     response::{IntoResponse, Redirect},
 };
-use http::{Response, StatusCode, Uri};
 use lettre::{
     message::{Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::{Credentials, Mechanism},
@@ -17,7 +17,7 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use tracing::*;
 
-use crate::{unwrap_response, AppData, PostgresConnection};
+use crate::{AppData, PostgresConnection};
 
 use super::session::Cookies;
 
@@ -32,8 +32,8 @@ pub(crate) async fn send_account_email_post_handler(
     Form(form): Form<SendAccountEmail>,
     Extension(data): Extension<Arc<AppData>>,
     cookies: Cookies,
-) -> Response<BoxBody> {
-    unwrap_response(send_account_creation_email(&data, &form.email, cookies).await)
+) -> crate::Result<Response<BoxBody>> {
+    Ok(send_account_creation_email(&data, &form.email, cookies).await?)
 }
 
 async fn send_account_creation_email(

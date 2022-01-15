@@ -5,13 +5,13 @@ use askama::Template;
 use axum::{
     body::{boxed, BoxBody, Empty},
     extract::{Extension, Form, Path},
+    http::{Response, StatusCode, Uri},
     response::{IntoResponse, Redirect},
 };
-use http::{Response, StatusCode, Uri};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use serde::Deserialize;
 
-use crate::{unwrap_response, AppData, AskamaTemplate};
+use crate::{AppData, AskamaTemplate};
 
 use super::session::Cookies;
 
@@ -61,14 +61,14 @@ WHERE secret = $1
 pub(crate) async fn generate_new_stream_key_post_handler(
     Extension(data): Extension<Arc<AppData>>,
     cookies: Cookies,
-) -> Response<BoxBody> {
-    unwrap_response(regenerate_stream_key(&data, cookies).await.map(|authed| {
-        if authed {
-            Redirect::to(Uri::from_static("/account")).into_response()
-        } else {
-            Redirect::to(Uri::from_static("/account/login")).into_response()
-        }
-    }))
+) -> crate::Result<Response<BoxBody>> {
+    let authed = regenerate_stream_key(&data, cookies).await?;
+
+    if authed {
+        Ok(Redirect::to(Uri::from_static("/account")).into_response())
+    } else {
+        Ok(Redirect::to(Uri::from_static("/account/login")).into_response())
+    }
 }
 
 fn generate_secret(len: usize) -> String {
@@ -118,13 +118,10 @@ pub(crate) struct CreateAccountForm {
 pub(crate) async fn create_account_post_handler(
     Form(form): Form<CreateAccountForm>,
     Extension(data): Extension<Arc<AppData>>,
-) -> Response<BoxBody> {
-    unwrap_response(create_account(&data, form).await.map(|_| {
-        Response::builder()
-            .status(StatusCode::OK)
-            .body(Empty::new())
-            .unwrap()
-    }))
+) -> crate::Result<&'static str> {
+    create_account(&data, form).await?;
+
+    Ok("Success!")
 }
 
 async fn create_account(data: &Arc<AppData>, form: CreateAccountForm) -> anyhow::Result<()> {

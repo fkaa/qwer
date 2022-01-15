@@ -4,11 +4,11 @@ use askama::Template;
 use axum::{
     body::{boxed, BoxBody},
     extract::Extension,
+    http::{Response, Uri},
     response::{IntoResponse, Redirect},
 };
-use http::{Response, Uri};
 
-use crate::{unwrap_response, AppData, AskamaTemplate};
+use crate::{AppData, AskamaTemplate};
 
 use super::session::Cookies;
 
@@ -23,16 +23,14 @@ struct AccountTemplate {
 pub(crate) async fn account_page_get_handler(
     Extension(data): Extension<Arc<AppData>>,
     cookies: Cookies,
-) -> Response<BoxBody> {
-    unwrap_response(get_account_details(&data, cookies).await.map(|d| {
-        if let Some(details) = d {
-            AskamaTemplate(&details).into_response()
-        } else {
-            Redirect::to(Uri::from_static("/account/login"))
-                .into_response()
-                .map(boxed)
-        }
-    }))
+) -> crate::Result<Response<BoxBody>> {
+    if let Some(details) = get_account_details(&data, cookies).await? {
+        Ok(AskamaTemplate(&details).into_response())
+    } else {
+        Ok(Redirect::to(Uri::from_static("/account/login"))
+            .into_response()
+            .map(boxed))
+    }
 }
 
 async fn get_account_details(

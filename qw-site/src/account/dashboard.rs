@@ -4,14 +4,11 @@ use askama::Template;
 use axum::{
     body::{boxed, BoxBody},
     extract::Extension,
+    http::{Response, Uri},
     response::{IntoResponse, Redirect},
 };
-use http::{Response, Uri};
 
-use crate::{
-    stream_service::get_stream_sessions, unwrap_response, AppData, AskamaTemplate,
-    PostgresConnection,
-};
+use crate::{stream_service::get_stream_sessions, AppData, AskamaTemplate, PostgresConnection};
 
 use super::session::Cookies;
 
@@ -137,8 +134,8 @@ struct DashboardTemplate {
 pub(crate) async fn dashboard_page_get_handler(
     Extension(data): Extension<Arc<AppData>>,
     cookies: Cookies,
-) -> Response<BoxBody> {
-    unwrap_response(dashboard_page(&data, cookies).await)
+) -> crate::Result<Response<BoxBody>> {
+    Ok(dashboard_page(&data, cookies).await?)
 }
 
 async fn dashboard_page(
