@@ -8,35 +8,34 @@ description = ""
 
 [dependencies]
 axum = { version = "0.4", features = ["headers"] }
-askama = "0.10"
-hyper = "*"
-anyhow = "*"
-http = "*"
-tokio = { version = "1.1", features = ["full"] }
+askama = "0.11"
+hyper = "0.14.16"
+anyhow = "1.0.52"
+tokio = { version = "1.15.0", features = ["full"] }
 tower-http = { version = "0.2", features = ["fs", "trace", "auth"] }
-tonic = { version = "*", features = ["tls", "compression"] }
+tonic = { version = "0.6.2", features = ["tls", "compression"] }
 
-async-trait = "*"
-futures = "*"
-tracing = "0.1"
-tracing-subscriber = { version="0.3", features = ["env-filter"] }
+async-trait = "0.1.52"
+futures = "0.3.19"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.6", features = ["env-filter"] }
 
-dotenv = "*"
+dotenv = "0.15.0"
 time = "0.3"
 
 backoff = { version = "0.3", features = ["tokio"] }
-tokio-postgres = { version = "0.7" }
-bb8 = { version = "0.7" }
-bb8-postgres = { version = "0.7" }
-refinery = { version = "0.7", features = ["tokio-postgres"] }
+tokio-postgres = "0.7"
+bb8 = "0.7"
+bb8-postgres = "0.7"
+refinery = { version = "0.8.4", features = ["tokio-postgres"] }
 # sqlx = { version = "0.5", features = ["time", "sqlite", "runtime-tokio-rustls"] }
 qw-proto = { path = "../libs/qw-proto" }
 lettre = { version = "0.10.0-rc.4", default-features = false, features = ["smtp-transport", "hostname", "builder", "pool", "rustls-tls"] }
-fastrand = "1.5.0"
+fastrand = "1.6.0"
 ascii = "1.0.0"
-serde = "1.0.130"
-argon2 = { version = "0.3.1", features = ["std"] }
-cookie = { version = "0.16.0-rc.1", features = ["secure", "percent-encode"] }
+serde = "1.0.133"
+argon2 = { version = "0.3.2", features = ["std"] }
+cookie = { version = "0.16.0", features = ["secure", "percent-encode"] }
 rand = "0.8"
 headers = "0.3.5"
 
