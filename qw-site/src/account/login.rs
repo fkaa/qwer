@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Redirect},
 };
 use cookie::Cookie;
-use headers::{Host, UserAgent};
+use headers::UserAgent;
 use serde::Deserialize;
 
 use crate::{AppData, AskamaTemplate};
@@ -46,16 +46,14 @@ pub(crate) struct LoginAccountForm {
 pub(crate) async fn login_account_post_handler(
     Form(form): Form<LoginAccountForm>,
     Extension(data): Extension<Arc<AppData>>,
-    TypedHeader(host): TypedHeader<Host>,
     user_agent: Option<TypedHeader<UserAgent>>,
 ) -> crate::Result<Response<BoxBody>> {
-    Ok(login(&data, &form, host, user_agent).await?)
+    Ok(login(&data, &form, user_agent).await?)
 }
 
 async fn login(
     data: &Arc<AppData>,
     form: &LoginAccountForm,
-    _host: Host,
     user_agent: Option<TypedHeader<UserAgent>>,
 ) -> anyhow::Result<Response<BoxBody>> {
     if let Some(cookie) = verify_login(data, form, user_agent.map(|h| h.0)).await? {
