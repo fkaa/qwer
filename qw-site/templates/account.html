@@ -1,89 +1,81 @@
-<!DOCTYPE html>
-<html class="page" lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/css/mystyles.css">
-    <link rel="shortcut icon" href="/static/favicon.png">
-    <title>Account - qwer.ee</title>
-  </head>
-  <body>
-    <section class="page is-primary">
-      <div class="hero-body">
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<section class="page is-primary">
+  <div class="hero-body">
 
-        <div class="container is-max-desktop">
-          <nav class="level">
-            <!-- Left side -->
-            <div class="level-left">
-              <a class="level-item" href="/">
-                <img class="frugal-image" src="/static/logo.png" />
-              </a>
-            </div>
+    <div class="container is-max-desktop">
+      <nav class="level">
+        <!-- Left side -->
+        <div class="level-left">
+          <a class="level-item" href="/">
+            <img class="frugal-image" src="/static/logo.png" />
+          </a>
+        </div>
 
-            <!-- Right side -->
-            <div class="level-right">
-              <div class="level-item buttons">
-                <a href="/streams" class="button is-primary has-text-weight-bold">Watch streams</a>
-                <a href="/help/intro" class="button is-link has-text-weight-bold">Help</a>
-              </div>
-            </div>
-          </nav>
-
-          <p class="title is-1">Account</p>
-
-
-          <div class="field is-horizontal">
-            <div class="field-label is-normal"><label class="label">Name</label></div>
-            <div class="field-body"><input class="input" type="text" value="{{ name }}" readonly></div>
+        <!-- Right side -->
+        <div class="level-right">
+          <div class="level-item buttons">
+            <a href="/streams" class="button is-primary has-text-weight-bold">Watch streams</a>
+            <a href="/help/intro" class="button is-link has-text-weight-bold">Help</a>
           </div>
+        </div>
+      </nav>
+
+      <p class="title is-1">Account</p>
 
 
-          <div class="field is-horizontal">
-            <div class="field-label is-normal"><label class="label">Email</label></div>
-            <div class="field-body"><input class="input" type="email" value="{{ email }}" readonly></div>
-          </div>
+      <div class="field is-horizontal">
+        <div class="field-label is-normal"><label class="label">Name</label></div>
+        <div class="field-body"><input class="input" type="text" value="{{ name }}" readonly></div>
+      </div>
 
-          <div class="field is-horizontal">
-            <div class="field-label is-normal"><label class="label">Stream key</label></div>
-            <div class="field-body">
-              <div class="field">
-                <div class="buttons">
-                <button onclick="copyToClipboard();" class="button is-primary">
-                  Copy key to clipboard
-                </button>
 
-                <form action="/account/new-stream-key" method="post">
-                  <button type="submit" class="button is-warning">
-                    Generate new key
-                  </button>
-                </form>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div class="field is-horizontal">
+        <div class="field-label is-normal"><label class="label">Email</label></div>
+        <div class="field-body"><input class="input" type="email" value="{{ email }}" readonly></div>
+      </div>
 
-          <div class="field is-horizontal">
-            <div class="field-label"></div>
-            <div class="field-body">
-              <div class="field">
-                <details>
-                  <summary>
-                    <p style="display:inline;" class="label is-warning">Show key</p>
-                  </summary>
+      <div class="field is-horizontal">
+        <div class="field-label is-normal"><label class="label">Stream key</label></div>
+        <div class="field-body">
+          <div class="field">
+            <div class="buttons">
+            <button onclick="copyToClipboard();" class="button is-primary">
+              Copy key to clipboard
+            </button>
 
-                  <input id="stream-key" class="input" type="text" value="{{ stream_key }}" readonly>
-
-                </details>
-              </div>
+            <form action="/account/new-stream-key" method="post">
+              <button type="submit" class="button is-warning">
+                Generate new key
+              </button>
+            </form>
             </div>
           </div>
         </div>
       </div>
-    </section>
-    <script type="text/javascript">
-      function copyToClipboard() {
-          navigator.clipboard.writeText(document.getElementById("stream-key").value);
-      }
-    </script>
-  </body>
-</html>
+
+      <div class="field is-horizontal">
+        <div class="field-label"></div>
+        <div class="field-body">
+          <div class="field">
+            <details>
+              <summary>
+                <p style="display:inline;" class="label is-warning">Show key</p>
+              </summary>
+
+              <input id="stream-key" class="input" type="text" value="{{ stream_key }}" readonly>
+
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<script type="text/javascript">
+  function copyToClipboard() {
+      navigator.clipboard.writeText(document.getElementById("stream-key").value);
+  }
+</script>
+{% endblock %}

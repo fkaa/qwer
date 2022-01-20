@@ -1,72 +1,63 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/css/mystyles.css">
-    <link rel="stylesheet" href="/static/css/dygraph.css">
-    <link rel="shortcut icon" href="/static/favicon.png">
-    <title>Dashboard - qwer.ee</title>
-  </head>
-  <body>
-    <div class="container">
-      <p class="title is-1">Bandwidth statistics</p>
-      <p class="subtitle is-3">Bandwidth usage for all accounts</p>
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<div class="container">
+  <p class="title is-1">Bandwidth statistics</p>
+  <p class="subtitle is-3">Bandwidth usage for all accounts</p>
 
+  {% for entry in entries %}
+  <div class="box">
+    <h2>{{ entry.account_name }}</h2>
+    <div id="graph-{{ entry.account_name }}"></div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="container">
+  <p class="title is-1">Create account</p>
+  <p class="subtitle is-3">Send an account creation link to email</p>
+
+  <form action="/account/send-account-email" method="post">
+    <input class="input" type="email" name="email" placeholder="Email">
+    <button type="submit" class="button is-success">
+        Send email
+    </button>
+  </form>
+</div>
+
+<script src="/static/js/dygraph.min.js"></script>
+<script>
+  ACCOUNTS=[
       {% for entry in entries %}
-      <div class="box">
-        <h2>{{ entry.account_name }}</h2>
-        <div id="graph-{{ entry.account_name }}"></div>
-      </div>
-      {% endfor %}
-    </div>
-
-    <div class="container">
-      <p class="title is-1">Create account</p>
-      <p class="subtitle is-3">Send an account creation link to email</p>
-
-      <form action="/account/send-account-email" method="post">
-        <input class="input" type="email" name="email" placeholder="Email">
-        <button type="submit" class="button is-success">
-            Send email
-        </button>
-      </form>
-    </div>
-
-    <script src="/static/js/dygraph.min.js"></script>
-    <script>
-      ACCOUNTS=[
-          {% for entry in entries %}
-          {
-              name: "{{ entry.account_name }}",
-              samples: [
-                  {% for sample in entry.data %}
+      {
+          name: "{{ entry.account_name }}",
+          samples: [
+              {% for sample in entry.data %}
 [new Date({{ sample.time }} * 1000), {% match sample.bytes %} {% when Some with (bytes) %} {{ bytes }} {% when None %} null {% endmatch %} ],
-                  {% endfor %}
-              ],
-          },
-          {% endfor %}
-      ];
+              {% endfor %}
+          ],
+      },
+      {% endfor %}
+  ];
 
-      function bytesToSize(bytes) {
-          var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-          if (bytes == 0) return '0 Byte';
-          var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-          return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
-      }
+  function bytesToSize(bytes) {
+      var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      if (bytes == 0) return '0 Byte';
+      var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+      return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+  }
 
 
-      ACCOUNTS.forEach(a => {
-          new Dygraph(
-              document.getElementById(`graph-${a.name}`),
-              a.samples,
-              {
-                  labels: [ "time", "bytes" ],
-                  drawGapEdgePoints: true,
-                  fillGraph: true,
-                  labelsKMG2: true,
-              });
-      });
-    </script>
-  </body>
-</html>
+  ACCOUNTS.forEach(a => {
+      new Dygraph(
+          document.getElementById(`graph-${a.name}`),
+          a.samples,
+          {
+              labels: [ "time", "bytes" ],
+              drawGapEdgePoints: true,
+              fillGraph: true,
+              labelsKMG2: true,
+          });
+  });
+</script>
+{% endblock %}

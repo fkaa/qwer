@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html class="page" lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/css/mystyles.css">
+    <link rel="shortcut icon" href="/static/favicon.png">
+    <script type="text/javascript"></script>
+    {% block head %}{% endblock %}
+    <title>
+      {%- block title %}
+      {%- if title == "" %}qwer.ee{% else %}{{ title }} - qwer.ee{% endif -%}
+      {% endblock -%}
+    </title>
+  </head>
+  <body>
+    {% block content %}{% endblock %}
+  </body>
+</html>

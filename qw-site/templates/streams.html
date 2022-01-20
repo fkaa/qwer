@@ -1,63 +1,54 @@
-<!DOCTYPE html>
-<html class="page" lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/css/mystyles.css">
-    <link rel="shortcut icon" href="/static/favicon.png">
-    <script type="text/javascript"></script>
-    <title>Streams - qwer.ee</title>
-  </head>
-  <body class="page is-primary">
-    <section class="section landing-section">
+{% extends "base.html" %}
+{% block title %}Streams{% endblock %}
 
-      <nav class="level">
-        <!-- Left side -->
-        <div class="level-left">
-          <a class="level-item" href="/">
-            <img class="frugal-image" src="/static/logo.png" />
-          </a>
-        </div>
+{% block content %}
+<section class="section landing-section">
+  <nav class="level">
+    <!-- Left side -->
+    <div class="level-left">
+      <a class="level-item" href="/">
+        <img class="frugal-image" src="/static/logo.png" />
+      </a>
+    </div>
 
-        <!-- Right side -->
-        <div class="level-right">
-          <div class="level-item buttons">
-            <a href="/account/dashboard" class="button is-link has-text-weight-bold">Dashboard</a>
-            <a href="/account" class="button is-link has-text-weight-bold">Account</a>
-            <a href="/help/intro" class="button is-link has-text-weight-bold">Help</a>
-          </div>
-        </div>
-      </nav>
-
-      {% if streams.len() == 0 %}
-      <div class="container landing-content">
-        <div class="content landing-content stream-card-parent">
-          <img class="frugal-image" src="/static/cat.png" />
-          <p class="title is-3">No streams!</p>
-          <p class="subtitle is-5">Check back a little later...</p>
-        </div>
+    <!-- Right side -->
+    <div class="level-right">
+      <div class="level-item buttons">
+        <a href="/account/dashboard" class="button is-link has-text-weight-bold">Dashboard</a>
+        <a href="/account" class="button is-link has-text-weight-bold">Account</a>
+        <a href="/help/intro" class="button is-link has-text-weight-bold">Help</a>
       </div>
-      {% else %}
+    </div>
+  </nav>
 
-      <div class="container is-max-desktop">
-        <div class="content stream-card-parent">
-          {% for stream in streams %}
-          <a href="/{{ stream.name }}">
-            <div class="stream-card">
-              <img stream-id="{{ stream.name }}" class="stream-poster" src="/static/placeholder.png">
-              <p><b>{{ stream.name }}</b> | {{ stream.viewers }} viewers</p>
-            </div>
-          </a>
-          {% endfor %}
+  {% if streams.len() == 0 %}
+  <div class="container landing-content">
+    <div class="content landing-content stream-card-parent">
+      <img class="frugal-image" src="/static/cat.png" />
+      <p class="title is-3">No streams!</p>
+      <p class="subtitle is-5">Check back a little later...</p>
+    </div>
+  </div>
+  {% else %}
+
+  <div class="container is-max-desktop">
+    <div class="content stream-card-parent">
+      {% for stream in streams %}
+      <a href="/{{ stream.name }}">
+        <div class="stream-card">
+          <img stream-id="{{ stream.name }}" class="stream-poster" src="/static/placeholder.png">
+          <p><b>{{ stream.name }}</b> | {{ stream.viewers }} viewers</p>
         </div>
-      </div>
-      {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
-    </section>
+</section>
 
-    <script type="text/javascript">
-      TRANSPORT_ADDRESS = "{{ transport_address|safe }}";
-    </script>
-    <script src="/static/js/index2.bundle.js" type="text/javascript"></script>
-  </body>
-</html>
+<script type="text/javascript">
+  TRANSPORT_ADDRESS = "{{ transport_address|safe }}";
+</script>
+<script src="/static/js/index2.bundle.js" type="text/javascript"></script>
+{% endblock %}

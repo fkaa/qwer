@@ -1,47 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/css/mystyles.css">
-    <link rel="shortcut icon" href="/static/favicon.png">
-    <title>Login - qwer.ee</title>
-  </head>
-  <body>
-    <section class="section landing-section">
-      <div class="container landing-content">
-          <p class="title is-1">Login</p>
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
 
-          <form action="/account/login" method="post">
-            <div class="field">
-              <label class="label">Email</label>
-              <div class="control">
-                <input class="input" type="email" name="email">
-              </div>
-            </div>
+{% block content %}
+<section class="section landing-section">
+  <div class="container landing-content">
+    <p class="title is-1">Login</p>
 
-            <div class="field">
-              <label class="label">Password</label>
-              <div class="control">
-                <input class="input" type="password" name="password">
-              </div>
-            </div>
-
-            <input type="hidden" name="redirect" value="{{ redirect }}">
-
-            <div class="field">
-              <button type="submit" class="button is-success">
-                Login
-              </button>
-            </div>
-
-            <div class="field">
-              <div id="retry" class="hidden notification is-danger">
-                Invalid login. Please try again.
-              </div>
-            </div>
-          </form>
+    <form action="/account/login" method="post">
+      <div class="field">
+        <label class="label">Email</label>
+        <div class="control">
+          <input class="input" type="email" name="email">
+        </div>
       </div>
-    </section>
-  </body>
-</html>
+
+      <div class="field">
+        <label class="label">Password</label>
+        <div class="control">
+          <input class="input" type="password" name="password">
+        </div>
+      </div>
+
+      <input type="hidden" name="redirect" value="{{ redirect }}">
+
+      <div class="field">
+        <button type="submit" class="button is-success">
+          Login
+        </button>
+      </div>
+
+      <div class="field">
+        <div id="retry" class="hidden notification is-danger">
+          Invalid login. Please try again.
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
