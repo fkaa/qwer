@@ -59,4 +59,4 @@ jobs:
         name: qwer-build-artifacts
         path: qwer.tar.gz
     outputs:
-      package_version: ${{ env.CRATE_VERSION }}
+      package_version: ${{ env.PACKAGE_VERSION }}

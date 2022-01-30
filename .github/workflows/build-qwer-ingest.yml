@@ -46,11 +46,11 @@ jobs:
       run: echo "PACKAGE_VERSION=$CRATE_VERSION-$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
 
     - name: Compress artifacts
-      run: tar -vpczf qwer-ingest.tar.gz --transform "s,^,qwer-ingest-${{ env.CRATE_VERSION }}/," ./build  ./target/x86_64-unknown-linux-musl/release/qwer-ingest
+      run: tar -vpczf qwer-ingest.tar.gz --transform "s,^,qwer-ingest-${{ env.PACKAGE_VERSION }}/," ./build  ./target/x86_64-unknown-linux-musl/release/qwer-ingest
 
     - uses: actions/upload-artifact@master
       with:
         name: qwer-ingest-build-artifacts
         path: qwer-ingest.tar.gz
     outputs:
-      package_version: ${{ env.CRATE_VERSION }}
+      package_version: ${{ env.PACKAGE_VERSION }}

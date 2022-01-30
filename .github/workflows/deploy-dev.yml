@@ -31,7 +31,7 @@ jobs:
     name: Package ${{ inputs.output-artifact }} ${{ inputs.version }}
     runs-on: ubuntu-latest
     env:
-      CRATE_VERSION: ${{ inputs.version }}
+      PACKAGE_VERSION: ${{ inputs.version }}
 
     steps:
     - uses: actions/checkout@master
@@ -45,7 +45,7 @@ jobs:
       run: docker build -t build-container -f ${{ inputs.build-dockerfile }} . # build/Dockerfile.qwer .
 
     - name: Run RPM docker environment
-      run: docker run --rm -v $(pwd):/app -e CRATE_VERSION="${{ inputs.version }}" build-container --entrypoint=/bin/bash
+      run: docker run --rm -v $(pwd):/app -e PACKAGE_VERSION="${{ inputs.version }}" build-container --entrypoint=/bin/bash
 
     - uses: actions/upload-artifact@master
       with:

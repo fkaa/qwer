@@ -1,5 +1,5 @@
 Name:           qwer
-Version:        %(echo $CRATE_VERSION)
+Version:        %(echo $PACKAGE_VERSION)
 Release:        1%{?dist}
 Summary:        A simple web app
 
