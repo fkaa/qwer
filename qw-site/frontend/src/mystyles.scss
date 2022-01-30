@@ -9,7 +9,7 @@ $blue: #a9ded0;
 $orange: #F3B562;
 $red: #e0755f;
 
-
+$chanty-gray: #2a2c2d;
 $gray: #4a5050;
 $dark-gray: #333439;
 
@@ -143,6 +143,18 @@ $card-radius: 0.5rem;
 html, body {
     height: 100%;
     background-color: $chiffon;
+}
+
+.stream-bg {
+    width: 100%;
+    height: 100%;
+    background-color: $chanty-gray;
+}
+
+#stream {
+    width: 100%;
+    min-height: 100%;
+    height: 100vh;
 }
 
 .page-section {
