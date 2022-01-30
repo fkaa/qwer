@@ -49,7 +49,7 @@ jobs:
       run: echo "CRATE_VERSION=$(sed -n -e 's/^version = \"\([0-9].\+\)\"/\1/p' ./qw-site/Cargo.toml)" >> $GITHUB_ENV
 
     - name: Get package version
-      run: echo "PACKAGE_VERSION=$CRATE_VERSION-$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
+      run: echo "PACKAGE_VERSION=$CRATE_VERSION.$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
 
     - name: Compress artifacts
       run: tar -vpczf qwer.tar.gz --transform "s,^,qwer-${{ env.PACKAGE_VERSION }}/," ./build ./qw-site/frontend/dist ./qw-site/docs/output ./target/x86_64-unknown-linux-musl/release/qwer

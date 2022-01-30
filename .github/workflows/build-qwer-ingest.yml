@@ -43,7 +43,7 @@ jobs:
       run: echo "CRATE_VERSION=$(sed -n -e 's/^version = \"\([0-9].\+\)\"/\1/p' ./qw-ingest/Cargo.toml)" >> $GITHUB_ENV
 
     - name: Get package version
-      run: echo "PACKAGE_VERSION=$CRATE_VERSION-$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
+      run: echo "PACKAGE_VERSION=$CRATE_VERSION.$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
 
     - name: Compress artifacts
       run: tar -vpczf qwer-ingest.tar.gz --transform "s,^,qwer-ingest-${{ env.PACKAGE_VERSION }}/," ./build  ./target/x86_64-unknown-linux-musl/release/qwer-ingest
