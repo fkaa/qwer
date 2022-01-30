@@ -45,11 +45,14 @@ jobs:
     - name: Build qwer
       run: cargo build --release --target x86_64-unknown-linux-musl -p qwer
 
-    - name: Get package version
+    - name: Get crate version
       run: echo "CRATE_VERSION=$(sed -n -e 's/^version = \"\([0-9].\+\)\"/\1/p' ./qw-site/Cargo.toml)" >> $GITHUB_ENV
 
+    - name: Get package version
+      run: echo "PACKAGE_VERSION=$CRATE_VERSION-$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
+
     - name: Compress artifacts
-      run: tar -vpczf qwer.tar.gz --transform "s,^,qwer-${{ env.CRATE_VERSION }}/," ./build ./qw-site/frontend/dist ./qw-site/docs/output ./target/x86_64-unknown-linux-musl/release/qwer
+      run: tar -vpczf qwer.tar.gz --transform "s,^,qwer-${{ env.PACKAGE_VERSION }}/," ./build ./qw-site/frontend/dist ./qw-site/docs/output ./target/x86_64-unknown-linux-musl/release/qwer
 
     - uses: actions/upload-artifact@master
       with:
