@@ -96,8 +96,8 @@ pub async fn start_websocket_filters(
         } => res,
         res = async {
             loop {
-                if let Some(Ok(Message::Close(close))) = receiver.next().await {
-                    break Err(anyhow::anyhow!("WebSocket closed: {:?}", close));
+                if let Some(msg) = receiver.next().await {
+                    break Err(anyhow::anyhow!("WebSocket closed, got message: {:?}", msg));
                 }
             }
         } => res
