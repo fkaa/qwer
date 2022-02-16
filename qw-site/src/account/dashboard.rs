@@ -7,7 +7,7 @@ use axum::{
     http::{Response, Uri},
     response::{IntoResponse, Redirect},
 };
-use time::{OffsetDateTime, Duration, Time};
+use time::{Duration, OffsetDateTime, Time};
 
 use crate::{stream_service::get_stream_sessions, AppData, AskamaTemplate, PostgresConnection};
 
@@ -154,7 +154,11 @@ async fn dashboard_page(
     {
         let entries = get_all_dashboard_entries(&conn, start, end).await?;
 
-        let template = DashboardTemplate { entries, start: start.unix_timestamp(), end: end.unix_timestamp() };
+        let template = DashboardTemplate {
+            entries,
+            start: start.unix_timestamp(),
+            end: end.unix_timestamp(),
+        };
 
         Ok(AskamaTemplate(&template).into_response())
     } else if let Some(account_id) = data
@@ -164,7 +168,11 @@ async fn dashboard_page(
     {
         let entries = vec![get_dashboard_entry(&conn, account_id, start, end).await?];
 
-        let template = DashboardTemplate { entries, start: start.unix_timestamp(), end: end.unix_timestamp() };
+        let template = DashboardTemplate {
+            entries,
+            start: start.unix_timestamp(),
+            end: end.unix_timestamp(),
+        };
 
         Ok(AskamaTemplate(&template).into_response())
     } else {

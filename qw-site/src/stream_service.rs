@@ -353,7 +353,7 @@ async fn handle_msg(
             let mut stats = aggregated_stats.write().await;
             let entry = stats
                 .entry(stat.stream_session_id)
-                .or_insert(AggregatedStats::new(time::OffsetDateTime::now_utc()));
+                .or_insert_with(|| AggregatedStats::new(time::OffsetDateTime::now_utc()));
 
             if stat.is_ingest {
                 entry.ingest_bytes += stat.bytes_since_last_stats as i32;

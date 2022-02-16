@@ -169,12 +169,12 @@ async fn run_migrations(
 }
 
 async fn start() -> anyhow::Result<()> {
-    let ingest_addr = env("INGEST_WEB_ADDR", "localhost:8080");
-    let stream_addr = env("INGEST_STREAM_ADDR", "localhost:8080");
-    let ingest_rpc_addr = env("INGEST_RPC_ADDR", "localhost:8081");
+    let ingest_addr = env("INGEST_WEB_ADDR", "http://localhost:8080");
+    let stream_addr = env("INGEST_STREAM_ADDR", "wss://localhost:8080");
+    let ingest_rpc_addr = env("INGEST_RPC_ADDR", "http://localhost:8081");
 
     let scuffed_rpc_addr = resolve_env_addr("QW_RPC_ADDR", "localhost:9082");
-    let scuffed_addr = resolve_env_addr("QW_WEB_ADDR", "localhost:9082");
+    let scuffed_addr = resolve_env_addr("QW_WEB_ADDR", "localhost:9083");
 
     let manager = bb8_postgres::PostgresConnectionManager::new_from_stringlike(
         &env::var("DATABASE_URL").context("DATABASE_URL not set")?,
