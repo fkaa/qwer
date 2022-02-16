@@ -3,12 +3,6 @@ require('./mystyles.scss');
 MseStream = require('./app.js');
 
 const overlay = document.getElementById("overlay");
-const progress = document.getElementById("video-progress");
-const targetBuffer = document.getElementById("target-buffer");
-const volume = document.getElementById("volume-slider");
-const play = document.getElementById("play-stop-button");
-const playBox = document.getElementById("play-stop-box");
-const playText = document.getElementById("play-text");
 const container = document.getElementById('video-container');
 const video = document.getElementById('stream');
 
@@ -37,20 +31,6 @@ function toTargetBuffer(val) {
 }
 
 const stream = new MseStream(RTMP_MSE_STREAM);
-
-// buffer shit
-targetBuffer.addEventListener("change", (e) => {
-    console.log(targetBuffer.value);
-    stream.targetBuffer = mapTargetBuffer(targetBuffer.value / 100.0) / 1000.0;
-});
-targetBuffer.setAttribute("value", toTargetBuffer(stream.targetBuffer));
-
-// volume shit
-volume.addEventListener("change", (e) => {
-    console.log(volume.value);
-    video.volume = volume.value / 100.0;
-});
-volume.setAttribute("value", video.volume * 100);
 
 let pollInterval;
 
@@ -98,24 +78,6 @@ function setPlayStatus(playing) {
         playBox.classList.remove("playing");
         play.classList.remove("is-danger");
         play.classList.add("is-success");
-    }
-}
-
-function setLoadingStatus(success) {
-    if (success) {
-        progress.classList.remove("is-danger");
-        progress.classList.add("is-success");
-    } else {
-        progress.classList.remove("is-success");
-        progress.classList.add("is-danger");
-    }
-}
-
-function setLoadingProgress(value) {
-    if (value != null) {
-        progress.setAttribute("value", value.toString());
-    } else {
-        progress.removeAttribute("value");
     }
 }
 
