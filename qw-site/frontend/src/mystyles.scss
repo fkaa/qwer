@@ -99,6 +99,7 @@ $card-radius: 0.5rem;
 }
 
 .overlay-container {
+    pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -329,4 +330,3 @@ $slider-radius: 2;
 
 // @import "./fa/fontawesome.scss";
 // @import "./fa/solid.scss";
-
