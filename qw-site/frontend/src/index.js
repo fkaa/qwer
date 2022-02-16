@@ -9,12 +9,8 @@ const video = document.getElementById('stream');
 const minTargetBuffer = 100;
 const maxTargetBuffer = 2000;
 
-video.addEventListener("play", (e) => {
+overlay.addEventListener("click", (e) => {
     stream.attachStream();
-});
-
-video.addEventListener("pause", (e) => {
-    stream.removeStream();
 });
 
 function mapTargetBuffer(val) {
