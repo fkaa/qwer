@@ -1,10 +1,13 @@
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{PostgresConnection, PostgresPool};
 
+use bytesize::ByteSize;
 use qw_proto::stream_info::{stream_reply::StreamType, StreamMetadata};
-use tokio::sync::mpsc;
+use tokio::sync::RwLock;
+use tokio::task;
+use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
 pub struct StreamSession {
@@ -14,38 +17,44 @@ pub struct StreamSession {
     pub stop: Option<time::OffsetDateTime>,
 }
 
-struct BandwidthUsageSample {
-    time: time::OffsetDateTime,
-    bytes_since_prev: i32,
-    stream_session_id: i32,
-}
-
 async fn insert_bitrates(
     conn: &PostgresConnection<'_>,
-    bandwidths: &[BandwidthUsageSample],
+    bandwidths: &[(i32, AggregatedStats)],
 ) -> anyhow::Result<()> {
-    debug!("Inserting bandwidth usage");
-
     let stmt = conn
         .prepare(
             "
-INSERT INTO bandwidth_usage (time, bytes_since_prev, stream_session_id)
-VALUES($1, $2, $3)
+INSERT INTO bandwidth_usage (time, ingest_bytes_since_prev, bytes_since_prev, stream_session_id)
+VALUES($1, $2, $3, $4)
         ",
         )
         .await?;
 
-    for sample in bandwidths {
+    let mut total_ingest_bytes = 0;
+    let mut total_other_bytes = 0;
+
+    for (stream_id, stats) in bandwidths {
         conn.execute(
             &stmt,
             &[
-                &sample.time.unix_timestamp(),
-                &sample.bytes_since_prev,
-                &sample.stream_session_id,
+                &stats.time.unix_timestamp(),
+                &stats.ingest_bytes,
+                &stats.other_bytes,
+                &stream_id,
             ],
         )
         .await?;
+
+        total_ingest_bytes += stats.ingest_bytes as u64;
+        total_other_bytes += stats.other_bytes as u64;
     }
+
+    debug!(
+        "Streaming stats: streams={}, ingest={}, other={}",
+        bandwidths.len(),
+        ByteSize(total_ingest_bytes),
+        ByteSize(total_other_bytes)
+    );
 
     Ok(())
 }
@@ -198,10 +207,38 @@ pub struct StreamInfo {
     viewers: u32,
 }
 
+#[derive(Clone)]
+struct AggregatedStats {
+    time: time::OffsetDateTime,
+    ingest_bytes: i32,
+    other_bytes: i32,
+}
+
+impl AggregatedStats {
+    fn new(time: time::OffsetDateTime) -> Self {
+        AggregatedStats {
+            time,
+            ingest_bytes: 0,
+            other_bytes: 0,
+        }
+    }
+}
+
+async fn insert_agg_bitrates(
+    pool: Arc<PostgresPool>,
+    stats: Vec<(i32, AggregatedStats)>,
+) -> anyhow::Result<()> {
+    let conn = pool.get().await?;
+    insert_bitrates(&conn, &stats).await?;
+
+    Ok(())
+}
+
 pub struct StreamSessionService {
     pub recv: mpsc::Receiver<StreamType>,
     pub pool: Arc<PostgresPool>,
     pub streams: HashMap<i32, StreamInfo>,
+    aggregated_stats: RwLock<HashMap<i32, AggregatedStats>>,
 }
 
 impl StreamSessionService {
@@ -210,6 +247,7 @@ impl StreamSessionService {
             recv,
             pool,
             streams: HashMap::new(),
+            aggregated_stats: RwLock::new(HashMap::new()),
         }
     }
 
@@ -235,61 +273,95 @@ WHERE stop_time IS NULL
     }
 
     pub async fn poll(&mut self) -> anyhow::Result<()> {
-        while let Some(msg) = self.recv.recv().await {
-            match msg {
-                StreamType::StreamExisting(stream) => {
-                    self.streams.insert(
-                        stream.stream_session_id,
-                        StreamInfo {
-                            viewers: stream.viewers,
-                        },
-                    );
-
-                    if let Some(meta) = stream.meta {
-                        let conn = self.pool.get().await?;
-                        attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
+        tokio::select! {
+            res = async {
+                loop {
+                    if let Some(msg) = self.recv.recv().await {
+                        handle_msg(&self.pool, &mut self.streams, &self.aggregated_stats, msg).await?;
                     }
                 }
-                StreamType::StreamStarted(stream) => {
-                    self.streams
-                        .insert(stream.stream_session_id, StreamInfo { viewers: 0 });
+            } => res,
+            res = async {
+                loop {
+                    sleep(Duration::from_secs(60)).await;
 
-                    if let Some(meta) = stream.meta {
-                        let conn = self.pool.get().await?;
-                        attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
-                    }
-                }
-                StreamType::ViewerJoin(msg) => {
-                    if let Some(mut stream) = self.streams.get_mut(&msg.stream_session_id) {
-                        stream.viewers += 1;
-                    }
-                }
-                StreamType::ViewerLeave(msg) => {
-                    if let Some(mut stream) = self.streams.get_mut(&msg.stream_session_id) {
-                        stream.viewers -= 1;
-                    }
-                }
-                StreamType::StreamStopped(stream) => {
-                    let conn = self.pool.get().await?;
-                    let end = time::OffsetDateTime::now_utc();
-
-                    stop_stream_session(&conn, stream.stream_session_id, end).await?;
-                    self.streams.remove(&stream.stream_session_id);
-                }
-                StreamType::StreamStats(stat) => {
-                    let conn = self.pool.get().await?;
-
-                    let bw_usage = BandwidthUsageSample {
-                        stream_session_id: stat.stream_session_id,
-                        time: time::OffsetDateTime::now_utc(),
-                        bytes_since_prev: stat.bytes_since_last_stats as i32,
+                    let stats = {
+                        let mut stats = self.aggregated_stats.write().await;
+                        stats.drain().collect::<Vec<_>>()
                     };
 
-                    insert_bitrates(&conn, &[bw_usage]).await.unwrap();
+                    if !stats.is_empty() {
+                        let pool = self.pool.clone();
+                        task::spawn(async {
+                            if let Err(e) = insert_agg_bitrates(pool, stats).await {
+                                error!("Failed to insert aggregated stream stats: {e}");
+                            }
+                        });
+                    }
                 }
+            } => res
+        }
+    }
+}
+
+async fn handle_msg(
+    pool: &Arc<PostgresPool>,
+    streams: &mut HashMap<i32, StreamInfo>,
+    aggregated_stats: &RwLock<HashMap<i32, AggregatedStats>>,
+    msg: StreamType,
+) -> anyhow::Result<()> {
+    match msg {
+        StreamType::StreamExisting(stream) => {
+            streams.insert(
+                stream.stream_session_id,
+                StreamInfo {
+                    viewers: stream.viewers,
+                },
+            );
+
+            if let Some(meta) = stream.meta {
+                let conn = pool.get().await?;
+                attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
             }
         }
+        StreamType::StreamStarted(stream) => {
+            streams.insert(stream.stream_session_id, StreamInfo { viewers: 0 });
 
-        Ok(())
+            if let Some(meta) = stream.meta {
+                let conn = pool.get().await?;
+                attach_stream_metadata(&conn, stream.stream_session_id, meta).await?;
+            }
+        }
+        StreamType::ViewerJoin(msg) => {
+            if let Some(mut stream) = streams.get_mut(&msg.stream_session_id) {
+                stream.viewers += 1;
+            }
+        }
+        StreamType::ViewerLeave(msg) => {
+            if let Some(mut stream) = streams.get_mut(&msg.stream_session_id) {
+                stream.viewers -= 1;
+            }
+        }
+        StreamType::StreamStopped(stream) => {
+            let conn = pool.get().await?;
+            let end = time::OffsetDateTime::now_utc();
+
+            stop_stream_session(&conn, stream.stream_session_id, end).await?;
+            streams.remove(&stream.stream_session_id);
+        }
+        StreamType::StreamStats(stat) => {
+            let mut stats = aggregated_stats.write().await;
+            let entry = stats
+                .entry(stat.stream_session_id)
+                .or_insert(AggregatedStats::new(time::OffsetDateTime::now_utc()));
+
+            if stat.is_ingest {
+                entry.ingest_bytes += stat.bytes_since_last_stats as i32;
+            } else {
+                entry.other_bytes += stat.bytes_since_last_stats as i32;
+            }
+        }
     }
+
+    Ok(())
 }

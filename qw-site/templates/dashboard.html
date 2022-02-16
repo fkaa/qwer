@@ -33,7 +33,7 @@
           name: "{{ entry.account_name }}",
           samples: [
               {% for sample in entry.data %}
-[new Date({{ sample.time }} * 1000), {% match sample.bytes %} {% when Some with (bytes) %} {{ bytes }} {% when None %} null {% endmatch %} ],
+              [new Date({{ sample.time }} * 1000), {{ sample.other_bytes }}, {{ sample.ingest_bytes }} ],
               {% endfor %}
           ],
       },
@@ -53,8 +53,9 @@
           document.getElementById(`graph-${a.name}`),
           a.samples,
           {
-              labels: [ "time", "bytes" ],
-              drawGapEdgePoints: true,
+              labels: [ "time", "other bytes", "ingest bytes" ],
+              dateWindow: [ {{ start }} * 1000, {{ end }} * 1000 ],
+              stackedGraph: true,
               fillGraph: true,
               labelsKMG2: true,
           });
