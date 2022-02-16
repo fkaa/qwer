@@ -9,16 +9,16 @@ const video = document.getElementById('stream');
 const minTargetBuffer = 100;
 const maxTargetBuffer = 2000;
 
-play.addEventListener("click", (e) => {
-    if (playBox.classList.toggle("playing")) {
-        stream.attachStream();
+video.addEventListener("play", (e) => {
+    stream.attachStream();
 
-        setPlayStatus(true);
-    } else {
-        stream.removeStream();
+    setPlayStatus(true);
+});
 
-        setPlayStatus(false);
-    }
+video.addEventListener("pause", (e) => {
+    stream.removeStream();
+
+    setPlayStatus(false);
 });
 
 function mapTargetBuffer(val) {
