@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ name }}{% endblock %}
+
+{% block content %}
+<section class="section landing-section">
+  <div class="container landing-content">
+    <div class="content landing-content stream-card-parent">
+      <img class="frugal-image" src="/static/cat.png" />
+      <p class="title is-3">{{ name }} is not streaming right now!</p>
+      <p class="subtitle is-5">Go to the <a href="/streams">streams</a> page to find active streams.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

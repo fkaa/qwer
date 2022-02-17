@@ -86,16 +86,80 @@ struct StreamTemplate<'a> {
     stream: &'a str,
 }
 
+#[derive(Template)]
+#[template(path = "stream_not_streaming.html")]
+struct StreamOfflineTemplate<'a> {
+    name: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "stream_404.html")]
+struct Stream404Template;
+
 async fn stream_page(
     Path(stream): Path<String>,
     Extension(data): Extension<Arc<AppData>>,
-) -> Response<BoxBody> {
-    let template = StreamTemplate {
-        transport_address: &data.stream_transport_address,
-        stream: &stream,
-    };
+) -> crate::Result<Response<BoxBody>> {
+    match get_stream_status(&data, &stream).await? {
+        Some(StreamStatus::Online(name)) => {
+            let template = StreamTemplate {
+                transport_address: &data.stream_transport_address,
+                stream: &name,
+            };
 
-    AskamaTemplate(&template).into_response()
+            Ok(AskamaTemplate(&template).into_response())
+        },
+        Some(StreamStatus::Offline(name)) => {
+            let template = StreamOfflineTemplate {
+                name: &name,
+            };
+
+            Ok(AskamaTemplate(&template).into_response())
+        },
+        None => {
+            let mut response = AskamaTemplate(&Stream404Template).into_response();
+            *response.status_mut() = StatusCode::NOT_FOUND;
+
+            Ok(response)
+        }
+    }
+}
+
+enum StreamStatus {
+    Online(String),
+    Offline(String),
+}
+
+async fn get_stream_status(data: &Arc<AppData>, stream: &str) -> anyhow::Result<Option<StreamStatus>> {
+    let conn = data.pool.get().await?;
+
+    let row = conn.query_opt(
+        "
+SELECT id, name FROM account
+WHERE account.name ILIKE $1",
+        &[
+            &stream
+        ]).await?;
+
+    let id_and_name: Option<(i32, String)> = row.map(|r| (r.get(0), r.get(1)));
+
+    if let Some((id, name)) = id_and_name {
+        let row = conn.query_opt(
+            "
+SELECT id FROM stream_session
+WHERE account_id = $1 AND stop_time IS NULL",
+            &[
+                &id
+            ]).await?;
+
+        if row.is_some() {
+            Ok(Some(StreamStatus::Online(name)))
+        } else {
+            Ok(Some(StreamStatus::Offline(name)))
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 #[derive(Template)]
