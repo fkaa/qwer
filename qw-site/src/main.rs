@@ -281,7 +281,7 @@ async fn stream_info_listen(
 
     let stream = client
         .listen(StreamRequest {
-            stats_interval_seconds: 5,
+            stats_interval_seconds: 10,
         })
         .await;
 
@@ -290,7 +290,7 @@ async fn stream_info_listen(
     while let Some(msg) = stream.next().await {
         let StreamReply { stream_type } = msg?;
         if let Some(ty) = stream_type {
-            debug!("{:?}", ty);
+            trace!("{:?}", ty);
 
             send.send(ty.clone()).await.unwrap();
         }
