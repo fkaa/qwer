@@ -88,9 +88,9 @@ $card-radius: 0.5rem;
     font-weight: bold;
     font-size: 2em;
     color: $lg;
-    /*padding: 2px 10px;
+    padding: 2px 10px;
     background: rgba(0, 0, 0, 0.85);
-    border-radius: 4px;*/
+    border-radius: 4px;
 }
 
 .frugal-image {
@@ -107,6 +107,7 @@ $card-radius: 0.5rem;
     width: 100%;
     position: absolute;
     top: 0;
+    cursor: pointer;
 }
 
 .overlay-inner-container {
