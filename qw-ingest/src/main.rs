@@ -141,6 +141,7 @@ impl StreamRepository {
         snapshot: Arc<RwLock<Option<Frame>>>,
         info: StreamMetadata,
     ) {
+        debug!("Starting stream with id {stream_session_id}");
         let meta = StreamState::new(queue, snapshot, info.clone());
         self.streams.insert(stream_session_id, meta);
         self.stream_mapping.insert(stream, stream_session_id);
@@ -151,6 +152,7 @@ impl StreamRepository {
     }
 
     pub fn stop_stream(&mut self, stream_session_id: i32) {
+        debug!("Stopping stream with id {stream_session_id}");
         self.streams.remove(&stream_session_id);
         self.send_event(StreamType::StreamStopped(StreamStopped {
             stream_session_id,
@@ -270,7 +272,7 @@ async fn rtmp_ingest(
     }
 
     if let Err(e) = stream(queue, snapshot_provider).await {
-        error!("Error while ingesting: {}", e);
+        error!("Error while ingesting: {:?}", e);
     }
 
     info!("Stopping a stream at '{}'", name);
@@ -324,12 +326,12 @@ async fn listen_rtmp(
                 let data = data.clone();
                 tokio::spawn(async move {
                     if let Err(e) = process_rtmp_ingest(socket, addr, client, data).await {
-                        error!("Failed to process RTMP ingest: {}", e);
+                        error!("Failed to process RTMP ingest: {:?}", e);
                     }
                 });
             }
             Err(e) => {
-                error!("Failed to accept TCP connection: {}", e);
+                error!("Failed to accept TCP connection: {:?}", e);
             }
         }
     }
@@ -369,7 +371,7 @@ pub async fn http_video(
 
         task::spawn(async move {
             if let Err(e) = stream_http_video(bw_analyzer, output_filter, guard).await {
-                error!("{}", e);
+                error!("Failed to stream video: {:?}", e);
             }
         });
 
@@ -462,7 +464,7 @@ async fn handle_websocket_video_response(socket: WebSocket, stream: String, data
             BandwidthAnalyzerFilter::new(Box::new(queue_receiver), guard.0, false, sender);
 
         if let Err(e) = sh_transport_mse::start_websocket_filters(socket, &mut bw_analyzer).await {
-            error!("{}", e);
+            error!("Failed to run WebSocket filters: {:?}", e);
         }
     } else {
         debug!("Did not find a stream at {}", stream);
@@ -490,7 +492,7 @@ pub async fn snapshot(
                 .unwrap(),
             Err(e) => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(body::Full::from(format!("Failed to get snapshot: {}", e)))
+                .body(body::Full::from(format!("Failed to get snapshot: {:?}", e)))
                 .unwrap(),
         }
     } else {
@@ -539,7 +541,7 @@ async fn start() -> anyhow::Result<()> {
         let data = data.clone();
         tokio::spawn(async move {
             if let Err(e) = listen_rtmp(ingest_rtmp_addr, client, data).await {
-                error!("Error while listening on RTMP: {}", e);
+                error!("Error while listening on RTMP: {:?}", e);
             }
         });
     }

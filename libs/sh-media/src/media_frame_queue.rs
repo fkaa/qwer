@@ -1,6 +1,9 @@
 use super::{Frame, FrameReadFilter, FrameWriteFilter, Stream};
 use std::sync::{Arc, Mutex};
 
+use anyhow::Context;
+use tracing::*;
+
 /// A queue which broadcasts [`Frame`] to multiple readers.
 #[derive(Clone, Default)]
 pub struct MediaFrameQueue {
@@ -37,16 +40,10 @@ impl MediaFrameQueue {
 
             match result {
                 TrySendError::Full(_) => {
-                    /*debug!(
-                        self.logger,
-                        "Closing frame queue target due to channel overflow"
-                    )*/
+                    debug!("Closing frame queue target due to channel overflow")
                 }
                 TrySendError::Closed(_) => {
-                    /*debug!(
-                        self.logger,
-                        "Closing frame queue target due to channel disconnection."
-                    )*/
+                    debug!("Closing frame queue target due to channel disconnection.")
                 }
             }
 
@@ -63,7 +60,7 @@ impl MediaFrameQueue {
     pub fn get_receiver(&self) -> MediaFrameQueueReceiver {
         let (send, recv) = async_channel::bounded(1024);
 
-        // debug!(self.logger, "Adding frame queue target");
+        debug!("Adding frame queue target");
 
         let mut targets = self.targets.lock().unwrap();
         targets.push(send);
@@ -111,6 +108,10 @@ impl FrameReadFilter for MediaFrameQueueReceiver {
         // FIXME: on buffer overflow (channel closed), raise an error to the
         //        parent filter graph
 
-        Ok(self.recv.recv().await?)
+        let frame = self.recv.recv()
+            .await
+            .context("failed to read frame from queue")?;
+
+        Ok(frame)
     }
 }

@@ -2,6 +2,7 @@ use sh_fmp4::FragmentedMp4WriteFilter;
 use sh_media::*;
 use sh_media::{BitstreamFramerFilter, BitstreamFraming};
 
+use anyhow::Context;
 use axum::extract::ws::{Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 
@@ -73,25 +74,33 @@ pub async fn start_websocket_filters(
         .send(Message::Text(format!("{},{}", video_codec, audio_codec)))
         .await?;
 
-    // write
     let output_filter = WebSocketWriteFilter::new(sender);
     let fmp4_filter = Box::new(FragmentedMp4WriteFilter::new(Box::new(output_filter)));
     let write_analyzer = Box::new(FrameAnalyzerFilter::write(fmp4_filter));
-    //let output_filter = FileWriteFilter::new(tokio::fs::File::create("output.mp4").await.unwrap());
     let mut write = Box::new(BitstreamFramerFilter::new(
         BitstreamFraming::FourByteLength,
         write_analyzer,
     ));
 
-    let first_frame = wait_for_sync_frame(read).await?;
-    write.start(streams).await?;
-    write.write(first_frame).await?;
+    let first_frame = wait_for_sync_frame(read)
+        .await
+        .context("waiting for first sync frame")?;
+    write.start(streams)
+        .await
+        .context("starting to write")?;
+    write.write(first_frame)
+        .await
+        .context("writing first frame")?;
 
     tokio::select! {
         res = async {
             loop {
-                let frame = read.read().await?;
-                write.write(frame).await?;
+                let frame = read.read()
+                    .await
+                    .context("reading frame")?;
+                write.write(frame)
+                    .await
+                    .context("writing frame")?;
             }
         } => res,
         res = async {
