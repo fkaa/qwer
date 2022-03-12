@@ -28,8 +28,8 @@ impl MediaFrameQueue {
         let targets_to_remove = targets
             .iter()
             .map(|send| send.try_send(frame.clone()))
-            .filter_map(|r| r.err())
             .enumerate()
+            .filter_map(|(idx, res)| res.err().map(|e| (idx, e)))
             .collect::<Vec<_>>();
 
         for (idx, result) in targets_to_remove.into_iter().rev() {
