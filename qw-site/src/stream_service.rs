@@ -129,7 +129,7 @@ ON CONFLICT DO NOTHING
 pub async fn update_viewer_count(
     conn: &PostgresConnection<'_>,
     stream_session_id: i32,
-    count: u32,
+    count: i32,
 ) -> anyhow::Result<()> {
     let _ = conn
         .execute(
@@ -223,7 +223,7 @@ WHERE
 
 #[derive(Default)]
 pub struct StreamInfo {
-    viewers: u32,
+    viewers: i32,
 }
 
 #[derive(Clone)]
@@ -334,7 +334,7 @@ async fn handle_msg(
             streams.insert(
                 stream.stream_session_id,
                 StreamInfo {
-                    viewers: stream.viewers,
+                    viewers: stream.viewers as i32,
                 },
             );
 
