@@ -108,14 +108,12 @@ async fn stream_page(
             };
 
             Ok(AskamaTemplate(&template).into_response())
-        },
+        }
         Some(StreamStatus::Offline(name)) => {
-            let template = StreamOfflineTemplate {
-                name: &name,
-            };
+            let template = StreamOfflineTemplate { name: &name };
 
             Ok(AskamaTemplate(&template).into_response())
-        },
+        }
         None => {
             let mut response = AskamaTemplate(&Stream404Template).into_response();
             *response.status_mut() = StatusCode::NOT_FOUND;
@@ -130,27 +128,32 @@ enum StreamStatus {
     Offline(String),
 }
 
-async fn get_stream_status(data: &Arc<AppData>, stream: &str) -> anyhow::Result<Option<StreamStatus>> {
+async fn get_stream_status(
+    data: &Arc<AppData>,
+    stream: &str,
+) -> anyhow::Result<Option<StreamStatus>> {
     let conn = data.pool.get().await?;
 
-    let row = conn.query_opt(
-        "
+    let row = conn
+        .query_opt(
+            "
 SELECT id, name FROM account
 WHERE account.name ILIKE $1",
-        &[
-            &stream
-        ]).await?;
+            &[&stream],
+        )
+        .await?;
 
     let id_and_name: Option<(i32, String)> = row.map(|r| (r.get(0), r.get(1)));
 
     if let Some((id, name)) = id_and_name {
-        let row = conn.query_opt(
-            "
+        let row = conn
+            .query_opt(
+                "
 SELECT id FROM stream_session
 WHERE account_id = $1 AND stop_time IS NULL",
-            &[
-                &id
-            ]).await?;
+                &[&id],
+            )
+            .await?;
 
         if row.is_some() {
             Ok(Some(StreamStatus::Online(name)))
@@ -241,7 +244,7 @@ async fn start() -> anyhow::Result<()> {
     let scuffed_addr = resolve_env_addr("QW_WEB_ADDR", "localhost:9083");
 
     let manager = bb8_postgres::PostgresConnectionManager::new_from_stringlike(
-        &env::var("DATABASE_URL").context("DATABASE_URL not set")?,
+        env::var("DATABASE_URL").context("DATABASE_URL not set")?,
         tokio_postgres::NoTls,
     )
     .context("failed to create database connection")?;

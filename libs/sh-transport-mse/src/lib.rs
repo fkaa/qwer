@@ -85,10 +85,9 @@ pub async fn start_websocket_filters(
     let first_frame = wait_for_sync_frame(read)
         .await
         .context("waiting for first sync frame")?;
-    write.start(streams)
-        .await
-        .context("starting to write")?;
-    write.write(first_frame)
+    write.start(streams).await.context("starting to write")?;
+    write
+        .write(first_frame)
         .await
         .context("writing first frame")?;
 

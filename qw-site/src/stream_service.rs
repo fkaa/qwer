@@ -126,6 +126,25 @@ ON CONFLICT DO NOTHING
     Ok(())
 }
 
+pub async fn update_viewer_count(
+    conn: &PostgresConnection<'_>,
+    stream_session_id: i32,
+    count: u32,
+) -> anyhow::Result<()> {
+    let _ = conn
+        .execute(
+            "
+UPDATE stream_session
+SET viewer_count=$1
+WHERE id=$2
+            ",
+            &[&count, &stream_session_id],
+        )
+        .await?;
+
+    Ok(())
+}
+
 pub async fn get_stream_sessions(
     conn: &PostgresConnection<'_>,
     account: i32,
@@ -333,13 +352,17 @@ async fn handle_msg(
             }
         }
         StreamType::ViewerJoin(msg) => {
-            if let Some(mut stream) = streams.get_mut(&msg.stream_session_id) {
+            if let Some(stream) = streams.get_mut(&msg.stream_session_id) {
                 stream.viewers += 1;
+                let conn = pool.get().await?;
+                update_viewer_count(&conn, msg.stream_session_id, stream.viewers).await?;
             }
         }
         StreamType::ViewerLeave(msg) => {
-            if let Some(mut stream) = streams.get_mut(&msg.stream_session_id) {
+            if let Some(stream) = streams.get_mut(&msg.stream_session_id) {
                 stream.viewers -= 1;
+                let conn = pool.get().await?;
+                update_viewer_count(&conn, msg.stream_session_id, stream.viewers).await?;
             }
         }
         StreamType::StreamStopped(stream) => {

@@ -84,7 +84,7 @@ fn generate_help_item(
 ) -> anyhow::Result<()> {
     match item {
         TreeItem::Item { path, src_file, .. } => {
-            dest_path.push(path.to_owned());
+            dest_path.push(path);
             src.push(src_file);
 
             let content = read_md_to_html(&src)?;

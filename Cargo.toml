@@ -9,6 +9,7 @@ members = [
     "qw-site",
     "qw-ingest",
 ]
+resolver = "2"
 
 [patch.crates-io]
 av-data = { git = "https://github.com/rust-av/rust-av" }

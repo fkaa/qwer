@@ -167,7 +167,7 @@ async fn wait_for_metadata(
 
     loop {
         let bytes = read_filter.read().await?;
-        for res in rtmp_server_session.handle_input(&bytes).map_err(|e| e)? {
+        for res in rtmp_server_session.handle_input(&bytes)? {
             match res {
                 ServerSessionResult::OutboundResponse(pkt) => rtmp_tx.send(pkt).await?,
                 ServerSessionResult::RaisedEvent(ServerSessionEvent::StreamMetadataChanged {
@@ -448,10 +448,7 @@ impl FrameReadFilter for RtmpReadFilter {
 
         let streams = [self.video_stream.clone(), self.audio_stream.clone()];
 
-        Ok(std::array::IntoIter::new(streams)
-            .into_iter()
-            .flatten()
-            .collect())
+        Ok(streams.into_iter().flatten().collect())
     }
 
     async fn read(&mut self) -> anyhow::Result<Frame> {

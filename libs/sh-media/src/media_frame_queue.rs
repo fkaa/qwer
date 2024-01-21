@@ -108,7 +108,9 @@ impl FrameReadFilter for MediaFrameQueueReceiver {
         // FIXME: on buffer overflow (channel closed), raise an error to the
         //        parent filter graph
 
-        let frame = self.recv.recv()
+        let frame = self
+            .recv
+            .recv()
             .await
             .context("failed to read frame from queue")?;
 
