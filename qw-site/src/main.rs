@@ -150,7 +150,8 @@ WHERE account.name ILIKE $1",
             .query_opt(
                 "
 SELECT id FROM stream_session
-WHERE account_id = $1 AND stop_time IS NULL",
+WHERE account_id = $1 AND stop_time IS NULL
+LIMIT 1",
                 &[&id],
             )
             .await?;
