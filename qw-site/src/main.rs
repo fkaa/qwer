@@ -60,7 +60,7 @@ pub struct AppData {
 
 pub(crate) struct AskamaTemplate<'a, T>(&'a T);
 
-impl<'a, T: askama::Template> IntoResponse for AskamaTemplate<'a, T> {
+impl<T: askama::Template> IntoResponse for AskamaTemplate<'_, T> {
     fn into_response(self) -> Response<BoxBody> {
         use askama::DynTemplate;
 

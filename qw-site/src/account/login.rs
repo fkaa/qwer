@@ -4,11 +4,8 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use askama::Template;
 use axum::{
     body::{boxed, BoxBody, Empty},
-    extract::{Extension, Form, FromRequest, Query, RequestParts, TypedHeader},
-    http::{
-        header::{REFERER, SET_COOKIE},
-        HeaderValue, Response, StatusCode, Uri,
-    },
+    extract::{Extension, Form, Query, TypedHeader},
+    http::{header::SET_COOKIE, HeaderValue, Response, StatusCode, Uri},
     response::{IntoResponse, Redirect},
 };
 use cookie::Cookie;
@@ -115,25 +112,5 @@ WHERE email = $1
         }
     } else {
         Ok(None)
-    }
-}
-
-pub struct ExtractReferer(HeaderValue);
-
-#[async_trait::async_trait]
-impl<B> FromRequest<B> for ExtractReferer
-where
-    B: Send,
-{
-    type Rejection = (StatusCode, &'static str);
-
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let referer = req.headers().and_then(|headers| headers.get(REFERER));
-
-        if let Some(referer) = referer {
-            Ok(ExtractReferer(referer.clone()))
-        } else {
-            Err((StatusCode::BAD_REQUEST, "`Referer` header is missing"))
-        }
     }
 }

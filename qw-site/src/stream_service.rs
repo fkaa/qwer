@@ -12,9 +12,6 @@ use tracing::*;
 
 pub struct StreamSession {
     pub id: i32,
-    pub account_id: i32,
-    pub start: time::OffsetDateTime,
-    pub stop: Option<time::OffsetDateTime>,
 }
 
 async fn insert_bitrates(
@@ -157,11 +154,12 @@ pub async fn get_stream_sessions(
     let sessions = conn
         .query(
             "
-SELECT id, start_time, stop_time FROM stream_session
+SELECT id FROM stream_session
 WHERE
 account_id = $1 AND
 start_time >= $2 AND
 (stop_time <= $3 OR stop_time IS NULL)
+ORDER BY start_time
         ",
             &[&account, &start, &end],
         )
@@ -171,11 +169,6 @@ start_time >= $2 AND
         .iter()
         .map(|r| StreamSession {
             id: r.get::<_, i32>(0),
-            account_id: account,
-            start: time::OffsetDateTime::from_unix_timestamp(r.get::<_, i64>(1)).unwrap(),
-            stop: r
-                .get::<_, Option<i64>>(2)
-                .map(|t| time::OffsetDateTime::from_unix_timestamp(t).unwrap()),
         })
         .collect::<Vec<_>>();
 
@@ -184,7 +177,6 @@ start_time >= $2 AND
 
 pub struct ActiveStreamSession {
     pub viewer_count: i32,
-    pub started: time::OffsetDateTime,
     pub account_name: String,
 }
 
@@ -196,7 +188,6 @@ pub async fn get_active_public_stream_sessions(
             "
 SELECT
     stream_session.viewer_count,
-    stream_session.start_time,
     account.name
 FROM stream_session
 INNER JOIN account ON
@@ -213,7 +204,6 @@ WHERE
         .iter()
         .map(|r| ActiveStreamSession {
             viewer_count: r.get::<_, i32>(0),
-            started: time::OffsetDateTime::from_unix_timestamp(r.get::<_, i64>(1)).unwrap(),
             account_name: r.get::<_, String>(2),
         })
         .collect::<Vec<_>>();
