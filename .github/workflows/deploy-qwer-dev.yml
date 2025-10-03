@@ -7,11 +7,11 @@ env:
 
 jobs:
   build:
-    uses: fkaa/qwer/.github/workflows/build-qwer.yml@trunk
+    uses: hivecom/qwer/.github/workflows/build-qwer.yml@trunk
 
   deploy:
     needs: build
-    uses: fkaa/qwer/.github/workflows/deploy-dev.yml@trunk
+    uses: hivecom/qwer/.github/workflows/deploy-dev.yml@trunk
     with:
       input-artifact: qwer-build-artifacts
       output-artifact: qwer-rpm
