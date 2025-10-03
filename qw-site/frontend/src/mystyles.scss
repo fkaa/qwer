@@ -299,34 +299,10 @@ input[type="range"].volume-slider {
 // $input-border-color: transparent;
 // $input-shadow: none;
 
-// Import only what you need from Bulma
-@import "../node_modules/bulma/sass/utilities/_all.sass";
-@import "../node_modules/bulma/sass/base/_all.sass";
-@import "../node_modules/bulma/sass/grid/columns.sass";
-@import "../node_modules/bulma/sass/elements/button.sass";
-@import "../node_modules/bulma/sass/elements/container.sass";
-@import "../node_modules/bulma/sass/elements/content.sass";
-@import "../node_modules/bulma/sass/elements/title.sass";
-@import "../node_modules/bulma/sass/elements/progress.sass";
-@import "../node_modules/bulma/sass/elements/notification.sass";
-@import "../node_modules/bulma/sass/elements/table.sass";
-@import "../node_modules/bulma/sass/form/_all.sass";
-@import "../node_modules/bulma/sass/components/navbar.sass";
-@import "../node_modules/bulma/sass/components/menu.sass";
-@import "../node_modules/bulma/sass/components/level.sass";
-@import "../node_modules/bulma/sass/components/dropdown.sass";
-@import "../node_modules/bulma/sass/components/card.sass";
-@import "../node_modules/bulma/sass/layout/hero.sass";
-@import "../node_modules/bulma/sass/layout/section.sass";
-@import "../node_modules/bulma/sass/layout/footer.sass";
-@import "../node_modules/bulma/sass/helpers/typography.sass";
-@import "../node_modules/bulma/sass/helpers/spacing.sass";
-
-$slider-radius: 2;
+// TODO: Import only what you need from Bulma
+@import "../node_modules/bulma/sass/_index.scss";
 
 //@import "../node_modules/bulma/bulma.sass";
-@import "bulma-slider";
-@import "bulma-switch";
 
 // @import "./fa/fontawesome.scss";
 // @import "./fa/solid.scss";
