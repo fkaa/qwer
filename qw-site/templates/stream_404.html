@@ -3,6 +3,9 @@
 
 {% block content %}
 <section class="section landing-section">
+  {% let current_page = "404" %}
+  {% include "nav.html" %}
+
   <div class="container landing-content">
     <div class="content landing-content stream-card-parent">
       <img class="frugal-image" src="/static/cat.png" />

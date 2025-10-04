@@ -1,29 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Account{% endblock %}
 {% block content %}
-<div class="container">
-  <p class="title is-1">Bandwidth statistics</p>
-  <p class="subtitle is-3">Bandwidth usage per account over time</p>
 
-  {% for entry in entries %}
-  <div class="box">
-    <h2>{{ entry.account_name }}</h2>
-    <div id="graph-{{ entry.account_name }}"></div>
+<section class="section landing-section">
+  {% let current_page = "dashboard" %}
+  {% include "nav.html" %}
+
+  <div class="container">
+    <p class="title is-1">Bandwidth statistics</p>
+    <p class="subtitle is-3">Bandwidth usage per account over time</p>
+
+    {% for entry in entries %}
+    <div class="box">
+      <h2>{{ entry.account_name }}</h2>
+      <div id="graph-{{ entry.account_name }}"></div>
+    </div>
+    {% endfor %}
   </div>
-  {% endfor %}
-</div>
 
-<div class="container">
-  <p class="title is-1">Create account</p>
-  <p class="subtitle is-3">Send an account creation link to email</p>
+  <div class="container">
+    <p class="title is-1">Create account</p>
+    <p class="subtitle is-3">Send an account creation link to email</p>
 
-  <form action="/account/send-account-email" method="post">
-    <input class="input" type="email" name="email" placeholder="Email">
-    <button type="submit" class="button is-success">
-        Send email
-    </button>
-  </form>
-</div>
+    <form action="/account/send-account-email" method="post">
+      <input class="input" type="email" name="email" placeholder="Email">
+      <button type="submit" class="button is-success">
+          Send email
+      </button>
+    </form>
+  </div>
+</section>
 
 <script src="/static/js/dygraph.min.js"></script>
 <script>

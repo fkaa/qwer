@@ -2,21 +2,8 @@
 {% block title %}{% endblock %}
 {% block content %}
 <section class="section landing-section">
-  <nav class="level">
-    <div class="level-left">
-      <a class="level-item" href="/">
-        <img class="frugal-image" src="/static/logo.png" />
-      </a>
-    </div>
-
-    <div class="level-right">
-      <div class="level-item buttons">
-        <a href="/account/dashboard" class="button is-link has-text-weight-bold">Dashboard</a>
-        <a href="/account" class="button is-link has-text-weight-bold">Account</a>
-        <a href="/help/intro" class="button is-link has-text-weight-bold">Help</a>
-      </div>
-    </div>
-  </nav>
+  {% let current_page = "index" %}
+  {% include "nav.html" %}
 
   <div class="container landing-content has-text-centered">
     <img class="frugal-image" src="/static/frugal_man.png" />

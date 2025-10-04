@@ -2,6 +2,9 @@
 {% block title %}Create Account{% endblock %}
 {% block content %}
 <section class="section landing-section">
+  {% let current_page = "signup" %}
+  {% include "nav.html" %}
+
   <div class="container landing-content">
       <p class="title is-1">Create account</p>
 
