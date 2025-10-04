@@ -1,24 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Create Account{% endblock %}
+{% block title %}Reset Password{% endblock %}
 {% block content %}
 <section class="section landing-section">
-  {% let current_page = "signup" %}
+  {% let current_page = "reset-password" %}
   {% include "nav.html" %}
 
   <div class="container landing-content">
-      <p class="title is-1">Create account</p>
+      <p class="title is-1">Change Password</p>
 
-      <form action="/account/activate" method="post">
-        <div class="field">
-          <label class="label">Name</label>
-          <input class="input" type="text" name="account-name">
-        </div>
-
-        <div class="field">
-          <label class="label">Email</label>
-          <input class="input" type="email" value="{{ email }}" name="email">
-        </div>
-
+      <form action="/account/reset" method="post">
         <div class="field">
           <label class="label">Password</label>
           <input class="input" type="password" name="password">
@@ -33,7 +23,7 @@
 
         <div class="field">
           <button type="submit" class="button is-success">
-            Create
+            Submit
           </button>
         </div>
       </form>

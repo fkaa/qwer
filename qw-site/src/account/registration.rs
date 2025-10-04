@@ -62,7 +62,7 @@ async fn send_account_creation_email(
     }
 }
 
-fn generate_activation_secret(dest: &mut [u8; 32]) {
+pub fn generate_secret(dest: &mut [u8; 32]) {
     for c in dest.iter_mut() {
         *c = SECRET_CHARSET[fastrand::usize(..SECRET_CHARSET.len())];
     }
@@ -85,7 +85,7 @@ async fn send_account_creation_email_internal(
         .build();
 
     let mut secret = [0u8; 32];
-    generate_activation_secret(&mut secret);
+    generate_secret(&mut secret);
     let secret = AsciiStr::from_ascii(&secret[..])?;
 
     let from: Mailbox = format!("{} <no-reply@{}>", data.site_domain, data.site_domain)
