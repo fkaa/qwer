@@ -7,41 +7,44 @@
   {% include "nav.html" %}
 
   <div class="container landing-content">
-    <p class="title is-1">Login</p>
-
-    <form action="/account/login" method="post">
-      <div class="field">
-        <label class="label">Email</label>
-        <div class="control">
-          <input class="input" type="email" name="email">
+    <div class="column is-5">
+      <p class="title is-1">Login</p>
+      <form action="/account/login" method="post">
+        <div class="field">
+          <label class="label">Email</label>
+          <div class="control">
+            <input class="input" type="email" name="email">
+          </div>
         </div>
-      </div>
 
-      <div class="field">
-        <label class="label">Password</label>
-        <div class="control">
-          <input class="input" type="password" name="password">
+        <div class="field">
+          <label class="label">Password</label>
+          <div class="control">
+            <input class="input" type="password" name="password">
+          </div>
         </div>
-      </div>
 
-      <input type="hidden" name="redirect" value="{{ redirect }}">
+        <input type="hidden" name="redirect" value="{{ redirect }}">
 
-      <div class="field">
-        <button type="submit" class="button is-success">
-          Login
-        </button>
-      </div>
-
-    <a class="has-text-grey" href="/account/forgot-password">
-      Forgot your password?
-    </a>
-
-      <div class="field">
-        <div id="retry" class="hidden notification is-danger">
-          Invalid login. Please try again.
+        <div class="field">
+          <div class="control">
+            <button type="submit" class="button is-success">
+              Login
+            </button>
+          </div>
         </div>
-      </div>
-    </form>
+
+        <a class="has-text-grey" href="/account/forgot-password">
+          Forgot your password?
+        </a>
+
+        <div class="field">
+          <div id="retry" class="hidden notification is-danger">
+            Invalid login. Please try again.
+          </div>
+        </div>
+      </form>
+    </div>
   </div>
 </section>
 {% endblock %}
