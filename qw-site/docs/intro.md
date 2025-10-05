@@ -1,8 +1,8 @@
 # What is qwer.ee?
 
-qwer.ee is a [open source](https://github.com/fkaa/qwer) livestreaming
+qwer.ee is a [open source](https://github.com/hivecom/qwer) livestreaming
 website you can use together with your friends. It is _not_ a
-replacement for *big-streaming-site.tv*.
+replacement for _big-streaming-site.tv_.
 
 Unlike other big streaming sites, it focuses on low latency video with
 a small group of viewers. Interaction is assumed to exist outside of
